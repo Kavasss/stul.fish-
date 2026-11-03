@@ -328,6 +328,65 @@ for (const [sku, [n, d]] of Object.entries(SEED_PL)) {
   db.prepare("UPDATE products SET name_pl = ?, description_pl = ? WHERE sku = ? AND name_pl = '' AND description_pl = ''").run(n, d, sku);
 }
 
+/*
+ * Каталог v2: вся продукция фасуется по 1 кг.
+ * Стартовые товары переводятся на цену за 1 кг, только если их не меняли в админке
+ * (единица и цена совпадают с исходными). Ручные правки не трогаем.
+ */
+const CATALOG_1KG = {
+  //        старые: единица, цена(гр)  →  новые: цена, себестоимость (zł), мин. остаток, описание RU, описание PL, [название RU, название PL]
+  'SF-002': ['уп', 3900, 179, 110, 5, 'Филе норвежского лосося, слабосолёное, холодного копчения. Нарезка в вакуумной упаковке 1 кг.', 'Filet z łososia norweskiego, lekko solony, wędzony na zimno. Plastry w opakowaniu próżniowym 1 kg.'],
+  'SF-011': ['уп', 2500, 159, 85, 3, 'Тонкая стружка тихоокеанского кальмара. Упаковка 1 кг.', 'Cienkie wiórki z kałamarnicy pacyficznej. Opakowanie 1 kg.'],
+  'SF-012': ['банка', 8900, 349, 230, 3, 'Зернистая икра горбуши, 1 сорт. Упаковка 1 кг.', 'Ziarnista ikra z gorbuszy, 1. gatunek. Opakowanie 1 kg.'],
+  'SF-013': ['банка', 10900, 429, 280, 2, 'Крупное янтарное зерно, мягкий вкус. Упаковка 1 кг.', 'Duże bursztynowe ziarno, łagodny smak. Opakowanie 1 kg.'],
+  'SF-014': ['банка', 18900, 3690, 2450, 1, 'Аквакультурная осетровая икра, малосольная. Упаковка 1 кг.', 'Kawior z jesiotra z hodowli, lekko solony. Opakowanie 1 kg.'],
+  'SF-015': ['шт', 12900, 109, 65, 3, 'Вобла, корюшка, кальмар и анчоус — ассорти в упаковке 1 кг.', 'Wobła, stynka, kałamarnica i sardela — mix w opakowaniu 1 kg.'],
+  'SF-016': ['шт', 29900, 389, 255, 2, 'Красная икра горбуши и кеты по 500 г — всего 1 кг, в подарочной упаковке.', 'Ikra z gorbuszy i kety po 500 g — razem 1 kg, w opakowaniu prezentowym.', 'Набор «Икорный» (1 кг)', 'Zestaw „Ikrowy” (1 kg)'],
+};
+if (!db.prepare("SELECT 1 FROM settings WHERE key = 'catalog_1kg'").get()) {
+  tx(() => {
+    for (const [sku, [oldUnit, oldPrice, price, cost, minStock, desc, descPl, name, namePl]] of Object.entries(CATALOG_1KG)) {
+      const p = db.prepare('SELECT * FROM products WHERE sku = ?').get(sku);
+      if (!p || p.unit !== oldUnit || p.price !== oldPrice) continue; // товар уже меняли вручную
+      db.prepare(`UPDATE products SET unit = 'кг', price = ?, cost = ?, min_stock = ?, description = ?, description_pl = ?,
+        name = COALESCE(?, name), name_pl = COALESCE(?, name_pl), updated_at = datetime('now') WHERE id = ?`)
+        .run(price * 100, cost * 100, minStock, desc, descPl, name || null, namePl || null, p.id);
+    }
+    db.prepare("INSERT INTO settings (key, value) VALUES ('catalog_1kg', ?)").run(new Date().toISOString());
+  });
+}
+
+/*
+ * Стоковые фото товаров: public/img/products/<АРТИКУЛ>.jpg (+ <АРТИКУЛ>_2.jpg, <АРТИКУЛ>_3.jpg …).
+ * Подключаются к товару один раз и только если у товара ещё нет ни одного фото —
+ * загруженные вручную фото не трогаем, удалённые вручную обратно не появятся.
+ */
+function importStockPhotos() {
+  const dir = process.env.STOCK_PHOTOS_DIR || path.join(PUBLIC_DIR, 'img', 'products');
+  if (!fs.existsSync(dir)) return;
+  const files = fs.readdirSync(dir).filter((f) => /^[A-Za-z0-9_-]+\.(jpe?g|png|webp)$/i.test(f)).sort();
+  const bySku = {};
+  for (const f of files) {
+    const m = /^([A-Za-z0-9-]+?)(?:_(\d+))?\.(jpe?g|png|webp)$/i.exec(f); // SF-002.jpg, SF-002_2.jpg
+    if (!m) continue;
+    (bySku[m[1].toUpperCase()] ||= []).push({ f, n: Number(m[2] || 1), ext: m[3].toLowerCase() === 'jpeg' ? 'jpg' : m[3].toLowerCase() });
+  }
+  for (const [sku, list] of Object.entries(bySku)) {
+    const key = `stock_photos:${sku}`;
+    if (db.prepare('SELECT 1 FROM settings WHERE key = ?').get(key)) continue;
+    const p = db.prepare('SELECT id FROM products WHERE sku = ?').get(sku);
+    if (!p) continue;
+    if (!db.prepare('SELECT 1 FROM product_images WHERE product_id = ?').get(p.id)) {
+      list.sort((a, b) => a.n - b.n).forEach((it, i) => {
+        const name = `p${p.id}-${crypto.randomBytes(8).toString('hex')}.${it.ext}`;
+        fs.copyFileSync(path.join(dir, it.f), path.join(UPLOAD_DIR, name));
+        db.prepare('INSERT INTO product_images (product_id, filename, sort) VALUES (?,?,?)').run(p.id, name, i);
+      });
+    }
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(key, new Date().toISOString());
+  }
+}
+
 // Предупреждение, если в старой базе остались известные пароли из первой версии
 const KNOWN_WEAK = ['admin12345', 'manager12345'];
 function weakStaffAccounts() {
@@ -472,6 +531,7 @@ function applyMovement(product, type, qty, note, user, orderId = null, extra = {
   return Number(r.lastInsertRowid);
 }
 
+importStockPhotos();
 const { createSheetsSync } = require('./sheets-sync.js');
 const sheets = createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement, audit, tx });
 
@@ -804,9 +864,9 @@ route('POST', '/api/orders', ({ user, body, req }) => {
       const p = getProductRow(it.product_id);
       // Скрытый товар выглядит для покупателя так же, как несуществующий — название не раскрываем
       if (!p.active) throw new HttpError(404, 'Товар не найден');
-      const step = p.unit === 'кг' ? 0.5 : 1;
-      const qty = round3(num(it.qty, { min: step, max: 1000, name: 'количество' }));
-      if (Math.abs(qty / step - Math.round(qty / step)) > 1e-6) throw new HttpError(400, `Количество «${p.name}» должно быть кратно ${step}`);
+      // Вся продукция продаётся упаковками по 1 кг (или поштучно) — только целое количество
+      const qty = round3(num(it.qty, { min: 1, max: 1000, name: 'количество' }));
+      if (!Number.isInteger(qty)) throw new HttpError(400, `Количество «${p.name}» — только целое число упаковок`);
       applyMovement(p, 'sale', -qty, `Заказ №${oid}`, user, oid);
       db.prepare('INSERT INTO order_items (order_id,product_id,name,name_pl,unit,price,qty) VALUES (?,?,?,?,?,?,?)').run(oid, p.id, p.name, p.name_pl || '', p.unit, p.price, qty);
       total += Math.round(p.price * qty);

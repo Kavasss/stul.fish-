@@ -83,10 +83,10 @@ test('склад: приход, списание без причины запр�
 
 test('заказ списывает остаток, отмена возвращает', async () => {
   const before = (await manager('GET', '/api/products/1')).data.product.stock;
-  const o = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48 600 100 200', address: 'Marszałkowska 1', consent: true, items: [{ product_id: 1, qty: 1.5 }] });
+  const o = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48 600 100 200', address: 'Marszałkowska 1', consent: true, items: [{ product_id: 1, qty: 2 }] });
   assert.equal(o.status, 200, JSON.stringify(o.data));
-  assert.equal((await manager('GET', '/api/products/1')).data.product.stock, before - 1.5);
-  assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 1, qty: 0.3 }] })).status, 400);
+  assert.equal((await manager('GET', '/api/products/1')).data.product.stock, before - 2);
+  assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 1, qty: 0.5 }] })).status, 400);
   assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 1, qty: 999 }] })).status, 409);
   const c = await manager('PUT', `/api/orders/${o.data.order.id}/status`, { status: 'cancelled' });
   assert.equal(c.data.order.status, 'cancelled');

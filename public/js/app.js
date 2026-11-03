@@ -8,7 +8,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const zl = (n) => `${Number(n).toLocaleString(LOCALE(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} zł`;
 const fmtQty = (n) => Number(n).toLocaleString(LOCALE(), { maximumFractionDigits: 3 });
 const fmtDate = (s) => (s ? new Date(s.replace(' ', 'T') + 'Z').toLocaleString(LOCALE(), { dateStyle: 'short', timeStyle: 'short' }) : '');
-const stepFor = (unit) => (unit === 'кг' ? 0.5 : 1);
+const stepFor = () => 1; // вся продукция — упаковками по 1 кг (или поштучно)
 
 const state = { me: null, meta: null, cart: loadCart() };
 
@@ -39,7 +39,10 @@ const isStaff = () => !!state.me && (state.me.role === 'admin' || state.me.role 
 
 /* ---------------- Корзина ---------------- */
 function loadCart() {
-  try { return JSON.parse(localStorage.getItem('sf_cart') || '[]'); } catch { return []; }
+  try {
+    // старые корзины могли содержать 0,5 кг — теперь только целые упаковки
+    return JSON.parse(localStorage.getItem('sf_cart') || '[]').map((i) => ({ ...i, qty: Math.max(1, Math.round(i.qty)) }));
+  } catch { return []; }
 }
 function saveCart() {
   try { localStorage.setItem('sf_cart', JSON.stringify(state.cart)); } catch { /* приватный режим */ }

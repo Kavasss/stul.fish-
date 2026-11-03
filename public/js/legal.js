@@ -35,8 +35,9 @@ const LEGAL = {
       <h3>2. Товары и цены</h3>
       <p>Магазин продаёт пищевые продукты: копчёную, вяленую и сушёную рыбу, икру и наборы. Цены указаны в польских злотых (zł)
       и являются ценами брутто (с НДС/VAT). Стоимость доставки сообщается до подтверждения заказа.</p>
-      <p>Весовой товар продаётся с шагом 0,5 кг. Фактический вес может отличаться от заказанного. Окончательную сумму менеджер
-      согласует с покупателем по телефону до передачи заказа в доставку. Без согласия покупателя сумма не меняется.</p>
+      <p>Продукция продаётся упаковками по 1 кг. Цена на сайте указана за упаковку 1 кг. Если товар весовой (например, рыба
+      целиком) и фактический вес упаковки отличается, менеджер согласует окончательную сумму с покупателем по телефону до передачи
+      заказа в доставку. Без согласия покупателя сумма не меняется.</p>
 
       <h3>3. Оформление заказа</h3>
       <p>Заказ можно оформить без регистрации или из личного кабинета. Чтобы оформить заказ, нужно указать имя, телефон и, для доставки,
@@ -91,9 +92,9 @@ const LEGAL = {
       <h3>§ 2. Produkty i ceny</h3>
       <p>Sklep sprzedaje środki spożywcze: ryby wędzone, suszone, przekąski rybne, ikrę oraz zestawy. Ceny podawane są
       w złotych polskich (zł) i są cenami brutto (zawierają podatek VAT). Koszt dostawy jest podawany przed potwierdzeniem zamówienia.</p>
-      <p>Towar sprzedawany na wagę zamawia się z krokiem 0,5 kg. Rzeczywista waga może nieznacznie różnić się od zamówionej.
-      Ostateczną kwotę konsultant uzgadnia z Klientem telefonicznie przed przekazaniem zamówienia do dostawy.
-      Bez zgody Klienta kwota zamówienia nie ulega zmianie.</p>
+      <p>Produkty sprzedawane są w opakowaniach po 1 kg, a cena w Sklepie dotyczy opakowania 1 kg. Jeżeli rzeczywista waga
+      produktu sprzedawanego na wagę (np. ryby w całości) różni się od nominalnej, konsultant uzgadnia z Klientem ostateczną kwotę
+      telefonicznie przed przekazaniem zamówienia do dostawy. Bez zgody Klienta kwota zamówienia nie ulega zmianie.</p>
 
       <h3>§ 3. Składanie zamówień</h3>
       <p>Zamówienie można złożyć bez rejestracji lub po zalogowaniu na konto. W tym celu należy podać imię, numer telefonu oraz —
