@@ -1,0 +1,12 @@
+{
+  "name": "shul-fish",
+  "version": "1.0.0",
+  "description": "SHUL.FISH — интернет-магазин рыбы и икры с админ-панелью и складским учётом",
+  "main": "server.js",
+  "private": true,
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  }
+}
