@@ -83,20 +83,20 @@ test('склад: приход, списание без причины запр�
 
 test('заказ списывает остаток, отмена возвращает', async () => {
   const before = (await manager('GET', '/api/products/1')).data.product.stock;
-  const o = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48 600 100 200', address: 'Marszałkowska 1', items: [{ product_id: 1, qty: 1.5 }] });
+  const o = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48 600 100 200', address: 'Marszałkowska 1', consent: true, items: [{ product_id: 1, qty: 1.5 }] });
   assert.equal(o.status, 200, JSON.stringify(o.data));
   assert.equal((await manager('GET', '/api/products/1')).data.product.stock, before - 1.5);
-  assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', items: [{ product_id: 1, qty: 0.3 }] })).status, 400);
-  assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', items: [{ product_id: 1, qty: 999 }] })).status, 409);
+  assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 1, qty: 0.3 }] })).status, 400);
+  assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 1, qty: 999 }] })).status, 409);
   const c = await manager('PUT', `/api/orders/${o.data.order.id}/status`, { status: 'cancelled' });
   assert.equal(c.data.order.status, 'cancelled');
   assert.equal((await manager('GET', '/api/products/1')).data.product.stock, before);
 });
 
 test('покупатель регистрируется и видит свои заказы', async () => {
-  const r = await customer('POST', '/api/auth/register', { name: 'Анна', email: 'anna@example.com', password: 'password1' });
+  const r = await customer('POST', '/api/auth/register', { name: 'Анна', email: 'anna@example.com', password: 'password1', consent: true });
   assert.equal(r.data.user.role, 'customer');
-  await customer('POST', '/api/orders', { customer_name: 'Анна', phone: '+48600000000', delivery: 'pickup', items: [{ product_id: 12, qty: 1 }] });
+  await customer('POST', '/api/orders', { customer_name: 'Анна', phone: '+48600000000', delivery: 'pickup', consent: true, items: [{ product_id: 12, qty: 1 }] });
   assert.equal((await customer('GET', '/api/orders/my')).data.orders.length, 1);
   assert.equal((await customer('GET', '/api/orders')).status, 403);
   assert.equal((await customer('GET', '/api/inventory')).status, 403);
@@ -158,7 +158,7 @@ test('гость не видит точные остатки, видимость
 });
 
 test('ошибка заказа не раскрывает остаток склада', async () => {
-  const r = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', items: [{ product_id: 2, qty: 999 }] });
+  const r = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 2, qty: 999 }] });
   assert.equal(r.status, 409);
   assert.doesNotMatch(r.data.error, /\d+\s*(уп|кг|шт|банка)|остаток/);
 });
@@ -168,7 +168,7 @@ test('скрытый товар не виден и не раскрывается
   const id = created.data.product.id;
   assert.equal((await guest('GET', `/api/products/${id}`)).status, 404);
   assert.ok(!(await guest('GET', '/api/products?q=Секретная')).data.products.length);
-  const r = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', items: [{ product_id: id, qty: 1 }] });
+  const r = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: id, qty: 1 }] });
   assert.equal(r.status, 404);
   assert.doesNotMatch(JSON.stringify(r.data), /Секретная/);
 });
@@ -216,7 +216,7 @@ test('сессии хранятся в виде хэша', async () => {
   const rows = db.prepare('SELECT token FROM sessions').all();
   assert.ok(rows.length > 0);
   const c = client();
-  await c('POST', '/api/auth/login', { email: 'anna@example.com', password: 'password1' });
+  await c('POST', '/api/auth/login', { email: 'anna@example.com', password: 'password1', consent: true });
   // подставить хэш из базы как cookie не получится
   const stolen = rows[0].token;
   const r = await fetch(base + '/api/me', { headers: { Cookie: `sid=${stolen}` } });
@@ -226,8 +226,8 @@ test('сессии хранятся в виде хэша', async () => {
 test('смена пароля выкидывает другие сессии', async () => {
   const a = client();
   const b = client();
-  await a('POST', '/api/auth/register', { name: 'Пётр', email: 'petr@example.com', password: 'password1' });
-  await b('POST', '/api/auth/login', { email: 'petr@example.com', password: 'password1' });
+  await a('POST', '/api/auth/register', { name: 'Пётр', email: 'petr@example.com', password: 'password1', consent: true });
+  await b('POST', '/api/auth/login', { email: 'petr@example.com', password: 'password1', consent: true });
   assert.ok((await b('GET', '/api/me')).data.user);
   assert.equal((await a('PUT', '/api/me', { old_password: 'password1', new_password: 'password2' })).status, 200);
   assert.ok((await a('GET', '/api/me')).data.user, 'текущая сессия остаётся');

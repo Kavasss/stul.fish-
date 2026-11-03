@@ -117,6 +117,7 @@ const routes = [
   [/^#\/register$/, () => viewAuth('register')],
   [/^#\/account$/, viewAccount],
   [/^#\/delivery$/, viewDelivery],
+  [/^#\/(privacy|terms|cookies)$/, viewLegal],
   [/^#\/admin(?:\/(\w+))?$/, viewAdmin],
 ];
 async function router() {
@@ -331,6 +332,7 @@ function viewCart() {
       <label class="field" id="addrField">Адрес доставки<input class="input" name="address" placeholder="ул., дом, кв."></label>
       <label class="field">Комментарий<textarea class="input" name="comment" placeholder="Удобное время, домофон…"></textarea></label>
       <div class="total-line big"><span>Итого</span><b id="total"></b></div>
+      <label class="check consent"><input type="checkbox" name="consent" required> <span>Я принимаю <a href="#/terms" target="_blank">правила магазина</a> и <a href="#/privacy" target="_blank">политику конфиденциальности</a></span></label>
       <button class="btn primary" type="submit">Оформить заказ</button>
       ${state.me ? '' : '<p class="muted" style="margin:0;font-size:13px"><a href="#/login" style="color:var(--gold-2)">Войдите</a>, чтобы видеть историю заказов.</p>'}
     </form>
@@ -356,7 +358,7 @@ function viewCart() {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(form));
     try {
-      const { order } = await api('POST', '/api/orders', { ...fd, items: state.cart.map((i) => ({ product_id: i.id, qty: i.qty })) });
+      const { order } = await api('POST', '/api/orders', { ...fd, consent: form.consent.checked, items: state.cart.map((i) => ({ product_id: i.id, qty: i.qty })) });
       state.cart = []; saveCart();
       app.innerHTML = `<div class="empty"><div class="big">Спасибо! Заказ №${order.id} принят</div>
         <p>Сумма: <b style="color:var(--gold-2)">${zl(order.total)}</b>. Менеджер свяжется с вами по телефону ${esc(order.phone)}.</p>
@@ -376,13 +378,16 @@ function viewAuth(mode) {
       <label class="field">E-mail<input class="input" name="email" type="email" required autocomplete="email"></label>
       ${reg ? '<label class="field">Телефон<input class="input" name="phone" autocomplete="tel" placeholder="+48 …"></label>' : ''}
       <label class="field">Пароль<input class="input" name="password" type="password" required minlength="${reg ? 8 : 1}" autocomplete="${reg ? 'new-password' : 'current-password'}"></label>
+      ${reg ? '<label class="check consent"><input type="checkbox" name="consent" required> <span>Я принимаю <a href="#/terms" target="_blank">правила магазина</a> и <a href="#/privacy" target="_blank">политику конфиденциальности</a></span></label>' : ''}
       <button class="btn primary" type="submit">${reg ? 'Создать аккаунт' : 'Войти'}</button>
     </form>
   </div>`;
   $('#authForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
-      const { user } = await api('POST', reg ? '/api/auth/register' : '/api/auth/login', Object.fromEntries(new FormData(e.target)));
+      const fd = Object.fromEntries(new FormData(e.target));
+      if (reg) fd.consent = e.target.consent.checked;
+      const { user } = await api('POST', reg ? '/api/auth/register' : '/api/auth/login', fd);
       state.me = user; updateHeader();
       toast(`Добро пожаловать, ${user.name}!`);
       location.hash = user.role === 'customer' ? '#/account' : '#/admin';
@@ -414,6 +419,7 @@ async function viewAccount() {
         <button class="btn" type="submit">Сохранить</button>
       </form>
       <button class="btn danger" id="logout" style="margin-top:14px;width:100%">Выйти</button>
+      ${me.role === 'customer' ? '<button class="btn sm ghost" id="delAcc" style="margin-top:10px;width:100%">Удалить аккаунт и мои данные</button>' : ''}
     </div>
   </div>`;
   $('#profile').addEventListener('submit', async (e) => {
@@ -422,6 +428,19 @@ async function viewAccount() {
     catch (err) { toast(err.message, true); }
   });
   $('#logout').addEventListener('click', logout);
+  $('#delAcc')?.addEventListener('click', () => openModal(`<h2>Удаление аккаунта</h2>
+    <p>Аккаунт и личные данные профиля будут удалены безвозвратно. Данные уже оформленных заказов мы обязаны хранить для бухгалтерии
+    (см. <a href="#/privacy" style="color:var(--gold-2)">политику конфиденциальности</a>), но они больше не будут связаны с аккаунтом.</p>
+    <form class="form" id="delForm"><label class="field">Пароль для подтверждения<input class="input" name="password" type="password" required autocomplete="current-password"></label>
+    <div style="display:flex;gap:10px;justify-content:flex-end"><button type="button" class="btn ghost" data-close>Отмена</button><button class="btn danger">Удалить навсегда</button></div></form>`, (root) => {
+    $('#delForm', root).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await api('POST', '/api/me/delete', { password: e.target.password.value });
+        closeModal(); state.me = null; updateHeader(); location.hash = '#/'; toast('Аккаунт удалён');
+      } catch (err) { toast(err.message, true); }
+    });
+  }));
 }
 async function logout() {
   await api('POST', '/api/auth/logout', {});
@@ -451,6 +470,7 @@ const ADMIN_SECTIONS = [
   ['movements', 'Движения', 'inventory.view'],
   ['orders', 'Заказы', 'orders.manage'],
   ['users', 'Сотрудники', 'users.manage'],
+  ['sheets', 'Google Таблица', 'users.manage'],
   ['log', 'Журнал', 'log.view'],
 ];
 async function viewAdmin(section = 'dashboard') {
@@ -469,7 +489,7 @@ async function viewAdmin(section = 'dashboard') {
     <section id="adminMain"></section>
   </div>`;
   const main = $('#adminMain');
-  const views = { dashboard: adminDashboard, products: adminProducts, inventory: adminInventory, movements: adminMovements, orders: adminOrders, users: adminUsers, log: adminLog };
+  const views = { dashboard: adminDashboard, products: adminProducts, inventory: adminInventory, movements: adminMovements, orders: adminOrders, users: adminUsers, log: adminLog, sheets: adminSheets };
   await views[section](main, stats);
 }
 
@@ -813,6 +833,56 @@ async function adminLog(main) {
     </table></div>`;
 }
 
+/* ---------- Google Таблица ---------- */
+async function adminSheets(main) {
+  const st = await api('GET', '/api/sheets/status');
+  const when = (iso) => (iso ? new Date(iso).toLocaleString('ru-RU') : '—');
+  if (!st.configured) {
+    main.innerHTML = `<h2>Google Таблица</h2><div class="panel glow">
+      <h3>Связь не настроена</h3>
+      <ol class="muted" style="line-height:1.8">
+        <li>Откройте таблицу «SHUL.FISH — складской учёт» → <b>Расширения → Apps Script</b>.</li>
+        <li>Вставьте код из файла <code>google-sheets/Code.gs</code> репозитория, впишите в <code>SECRET</code> длинный случайный секрет.</li>
+        <li><b>Начать развёртывание → Новое развёртывание → Веб-приложение</b>: выполнять от имени «Я», доступ — «Все». Скопируйте URL.</li>
+        <li>На сервере задайте переменные <code>SHEETS_WEBAPP_URL</code> (URL) и <code>SHEETS_SECRET</code> (тот же секрет) и перезапустите сайт.</li>
+        <li>Вернитесь сюда и нажмите «Полная выгрузка».</li>
+      </ol></div>`;
+    return;
+  }
+  main.innerHTML = `<div class="toolbar"><h2 style="margin:0">Google Таблица</h2>
+      <div class="left"><button class="btn primary" id="syncNow" ${st.initialized ? '' : 'disabled'}>⟳ Синхронизировать сейчас</button>
+      <button class="btn ${st.initialized ? 'danger' : 'primary'}" id="syncFull">Полная выгрузка</button></div></div>
+    ${!st.initialized ? `<div class="panel" style="border-color:var(--warn);margin-bottom:18px"><b>Первый шаг — полная выгрузка.</b>
+      Она сотрёт примерные данные в таблице и запишет туда все товары, движения склада и заказы сайта. После этого синхронизация пойдёт автоматически.</div>` : ''}
+    ${st.last_error ? `<div class="panel" style="border-color:var(--danger);margin-bottom:18px"><b style="color:var(--danger)">Последняя ошибка</b> (${when(st.last_error_at)}): ${esc(st.last_error)}</div>` : ''}
+    <div class="stats">
+      <div class="stat"><div class="v" style="font-size:20px">${st.initialized ? '✓ Подключено' : 'Ожидает выгрузки'}</div><div class="l">${esc(st.webapp_host || '')}</div></div>
+      <div class="stat"><div class="v" style="font-size:20px">${when(st.last_sync_at)}</div><div class="l">Последняя синхронизация</div></div>
+      <div class="stat"><div class="v">${st.pending.products + st.pending.movements + st.pending.orders}</div><div class="l">Ждут отправки</div></div>
+      <div class="stat"><div class="v">${Math.round(st.interval_sec / 60) || 1} мин</div><div class="l">Авто-синхронизация</div></div>
+    </div>
+    ${st.warnings.length ? `<div class="panel" style="margin-bottom:18px"><h3>⚠ Требуют внимания в таблице</h3><ul>${st.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>` : ''}
+    <div class="panel"><h3>Как работает связь</h3><ul class="muted" style="line-height:1.8">
+      <li><b>Сайт → таблица:</b> товары, каждое движение склада (продажи, приходы, списания) и заказы со статусами — через несколько секунд после изменения.</li>
+      <li><b>Таблица → сайт:</b> правки цен, названий, описаний, «На сайте», новые товары (с новым артикулом) и новые строки на листе «Движения».</li>
+      <li>Проведённая строка движения получает номер в колонке «ID сайта». Строка с ⚠ не проведена: исправьте её и очистите эту ячейку.</li>
+      <li>Уже проведённые строки не редактируйте — ошибку исправляйте новой строкой «Корректировка».</li>
+      <li>Если цену изменили одновременно и на сайте, и в таблице, побеждает таблица.</li>
+    </ul></div>`;
+  const run = async (full) => {
+    if (full && !confirm('Полная выгрузка сотрёт данные на листах «Товары», «Движения», «Заказы» и запишет данные сайта заново. Продолжить?')) return;
+    $$('#syncNow, #syncFull').forEach((b) => { b.disabled = true; });
+    toast(full ? 'Выгружаю данные в таблицу…' : 'Синхронизирую…');
+    try {
+      const r = await api('POST', '/api/sheets/sync', { full });
+      toast(r.warnings.length ? `Готово, предупреждений: ${r.warnings.length}` : 'Синхронизировано');
+    } catch (err) { toast(err.message, true); }
+    adminSheets(main);
+  };
+  $('#syncNow').addEventListener('click', () => run(false));
+  $('#syncFull').addEventListener('click', () => run(true));
+}
+
 /* ---------------- Запуск ---------------- */
 (async function init() {
   $('#year').textContent = new Date().getFullYear();
@@ -827,4 +897,5 @@ async function adminLog(main) {
   updateHeader();
   $('#accountLink').addEventListener('click', (e) => { if (!state.me) { e.preventDefault(); location.hash = '#/login'; } });
   router();
+  cookieNotice();
 })();

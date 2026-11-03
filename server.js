@@ -155,7 +155,26 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_mov_product ON stock_movements(product_id);
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS deleted_skus (sku TEXT PRIMARY KEY, pushed INTEGER NOT NULL DEFAULT 0);
 `);
+
+// Миграции для баз, созданных старыми версиями
+function addColumn(table, col, def) {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+}
+addColumn('products', 'sheet_hash', 'TEXT');
+addColumn('stock_movements', 'product_sku', "TEXT NOT NULL DEFAULT ''");
+addColumn('stock_movements', 'source', "TEXT NOT NULL DEFAULT 'site'");
+addColumn('stock_movements', 'sheet_synced', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('stock_movements', 'sheet_key', 'TEXT');
+addColumn('orders', 'manager_name', "TEXT NOT NULL DEFAULT ''");
+addColumn('orders', 'sheet_ver', 'INTEGER NOT NULL DEFAULT 1');
+addColumn('orders', 'sheet_pushed_ver', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('orders', 'consent_at', 'TEXT');
+addColumn('users', 'consent_at', 'TEXT');
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mov_sheet_key ON stock_movements(sheet_key) WHERE sheet_key IS NOT NULL;
+UPDATE stock_movements SET product_sku = COALESCE((SELECT sku FROM products WHERE products.id = stock_movements.product_id), '') WHERE product_sku = '';`);
 
 /* ------------------------------------------------------------------ */
 /* Утилиты                                                              */
@@ -270,6 +289,17 @@ function seed() {
   }
 }
 seed();
+// У каждого товара должен быть уникальный артикул — по нему товар связывается с Google Таблицей
+function uniqueSku(base, exceptId = 0) {
+  let sku = base, n = 1;
+  while (db.prepare('SELECT 1 FROM products WHERE sku = ? AND id != ?').get(sku, exceptId)) sku = `${base}-${++n}`;
+  return sku;
+}
+for (const p of db.prepare("SELECT id, sku FROM products ORDER BY id").all()) {
+  const want = p.sku ? uniqueSku(p.sku, p.id) : uniqueSku(`SF-${String(p.id).padStart(3, '0')}`, p.id);
+  if (want !== p.sku) db.prepare('UPDATE products SET sku = ? WHERE id = ?').run(want, p.id);
+}
+db.exec(`UPDATE stock_movements SET product_sku = COALESCE((SELECT sku FROM products WHERE products.id = stock_movements.product_id), '') WHERE product_sku = ''`);
 
 // Предупреждение, если в старой базе остались известные пароли из первой версии
 const KNOWN_WEAK = ['admin12345', 'manager12345'];
@@ -398,20 +428,25 @@ function getProductRow(id) {
 function seesStock(user) {
   return can(user, 'inventory.view') || can(user, 'stock.manage') || can(user, 'products.edit');
 }
-function applyMovement(product, type, qty, note, user, orderId = null) {
+function applyMovement(product, type, qty, note, user, orderId = null, extra = {}) {
   const balance = round3(product.stock + qty);
   if (balance < 0) {
     // Покупателю не раскрываем точный остаток склада
-    throw new HttpError(409, seesStock(user)
+    throw new HttpError(409, seesStock(user) || extra.source === 'sheet'
       ? `Недостаточно товара «${product.name}» на складе (остаток ${product.stock} ${product.unit})`
       : `Товара «${product.name}» нет в таком количестве. Уменьшите количество или свяжитесь с нами.`);
   }
   db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(balance, product.id);
-  db.prepare('INSERT INTO stock_movements (product_id,product_name,type,qty,balance_after,unit_cost,note,user_id,order_id) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(product.id, product.name, type, round3(qty), balance, product.cost, note, user ? user.id : null, orderId);
+  const r = db.prepare(`INSERT INTO stock_movements (product_id,product_name,product_sku,type,qty,balance_after,unit_cost,note,user_id,order_id,
+      created_at,source,sheet_key,sheet_synced) VALUES (?,?,?,?,?,?,?,?,?,?,COALESCE(?, datetime('now')),?,?,?)`)
+    .run(product.id, product.name, product.sku || '', type, round3(qty), balance, product.cost, note, user && user.id ? user.id : null, orderId,
+      extra.createdAt || null, extra.source || 'site', extra.sheetKey || null, extra.sheetSynced ? 1 : 0);
   product.stock = balance;
-  return balance;
+  return Number(r.lastInsertRowid);
 }
+
+const { createSheetsSync } = require('./sheets-sync.js');
+const sheets = createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement, audit, tx });
 
 /* ------------------------------------------------------------------ */
 /* Маршруты API                                                         */
@@ -439,8 +474,9 @@ route('POST', '/api/auth/register', ({ body, req, res }) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Укажите корректный e-mail');
   if (!name) throw new HttpError(400, 'Укажите имя');
   if (password.length < 8) throw new HttpError(400, 'Пароль должен быть не короче 8 символов');
+  if (body.consent !== true) throw new HttpError(400, 'Нужно принять правила магазина и политику конфиденциальности');
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new HttpError(409, 'Такой e-mail уже зарегистрирован');
-  const r = db.prepare("INSERT INTO users (email,name,phone,role,password_hash) VALUES (?,?,?,'customer',?)")
+  const r = db.prepare("INSERT INTO users (email,name,phone,role,password_hash,consent_at) VALUES (?,?,?,'customer',?,datetime('now'))")
     .run(email, name, str(body.phone, 30), hashPassword(password));
   createSession(req, res, r.lastInsertRowid);
   const u = db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
@@ -507,7 +543,13 @@ route('GET', '/api/products/:id', ({ user, params }) => {
 function productFields(body, user, existing) {
   const f = {};
   if ('name' in body) { f.name = str(body.name, 120); if (!f.name) throw new HttpError(400, 'Укажите название'); }
-  if ('sku' in body) f.sku = str(body.sku, 40);
+  if ('sku' in body) {
+    f.sku = str(body.sku, 40).toUpperCase();
+    if (f.sku && db.prepare('SELECT 1 FROM products WHERE sku = ? AND id != ?').get(f.sku, existing ? existing.id : 0)) {
+      throw new HttpError(409, `Артикул ${f.sku} уже занят другим товаром`);
+    }
+    if (!f.sku) delete f.sku;
+  }
   if ('category' in body) { if (!CATEGORIES[body.category]) throw new HttpError(400, 'Неизвестная категория'); f.category = body.category; }
   if ('description' in body) f.description = str(body.description, 3000);
   if ('unit' in body) { if (!UNITS.includes(body.unit)) throw new HttpError(400, 'Неизвестная единица'); f.unit = body.unit; }
@@ -532,6 +574,7 @@ route('POST', '/api/products', ({ user, body }) => {
   const id = tx(() => {
     const cols = Object.keys(f);
     const r = db.prepare(`INSERT INTO products (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).run(...cols.map((c) => f[c]));
+    if (!f.sku) db.prepare('UPDATE products SET sku = ? WHERE id = ?').run(uniqueSku(`SF-${String(r.lastInsertRowid).padStart(3, '0')}`), r.lastInsertRowid);
     const p = getProductRow(r.lastInsertRowid);
     if (initial > 0) {
       if (!can(user, 'stock.manage')) throw new HttpError(403, 'Нет прав на оприходование');
@@ -540,6 +583,7 @@ route('POST', '/api/products', ({ user, body }) => {
     return p.id;
   });
   audit(user, 'Создан товар', `#${id} ${f.name}`);
+  sheets.schedule();
   return { product: shapeProduct(getProductRow(id), {}, user) };
 });
 route('PUT', '/api/products/:id', ({ user, params, body }) => {
@@ -551,6 +595,9 @@ route('PUT', '/api/products/:id', ({ user, params, body }) => {
     db.prepare(`UPDATE products SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = datetime('now') WHERE id = ?`).run(...cols.map((c) => f[c]), p.id);
     const changes = cols.map((c) => (c === 'price' || c === 'cost' ? `${c}: ${p[c] / 100} → ${f[c] / 100} zł` : c)).join(', ');
     audit(user, 'Изменён товар', `#${p.id} ${p.name}: ${changes}`);
+    // старый артикул в таблице помечаем удалённым, чтобы он не «воскрес» как новый товар
+    if (f.sku && p.sku && f.sku !== p.sku) db.prepare('INSERT OR REPLACE INTO deleted_skus (sku, pushed) VALUES (?, 0)').run(p.sku);
+    sheets.schedule();
   }
   const fresh = getProductRow(p.id);
   return { product: shapeProduct(fresh, imagesFor([p.id]), user) };
@@ -562,6 +609,8 @@ route('DELETE', '/api/products/:id', ({ user, params }) => {
   db.prepare('DELETE FROM products WHERE id = ?').run(p.id);
   for (const i of imgs) fs.rm(path.join(UPLOAD_DIR, i.filename), { force: true }, () => {});
   audit(user, 'Удалён товар', `#${p.id} ${p.name} (остаток ${p.stock} ${p.unit})`);
+  if (p.sku) db.prepare('INSERT OR REPLACE INTO deleted_skus (sku, pushed) VALUES (?, 0)').run(p.sku);
+  sheets.schedule();
   return { ok: true };
 });
 
@@ -627,6 +676,7 @@ route('POST', '/api/stock/:id', ({ user, params, body }) => {
     applyMovement(p, type, delta, note || (type === 'adjust' ? `Фактический остаток: ${qtyIn}` : ''), user);
     return p;
   });
+  sheets.schedule();
   audit(user, `Склад: ${MOVEMENT_TYPES[type]}`, `#${result.id} ${result.name}: ${qtyIn} ${result.unit}, остаток ${result.stock}`);
   return { product: shapeProduct(getProductRow(result.id), imagesFor([result.id]), user) };
 });
@@ -706,6 +756,7 @@ route('GET', '/api/inventory.csv', ({ user, query, res }) => {
 route('POST', '/api/orders', ({ user, body, req }) => {
   // Не даём боту «выкупить» склад фейковыми заказами
   if (!seesStock(user)) rateLimit('order', clientIp(req), 10, 3600e3, 'Слишком много заказов подряд. Позвоните нам, и мы оформим заказ вручную.');
+  if (body.consent !== true) throw new HttpError(400, 'Нужно принять правила магазина и политику конфиденциальности');
   const items = Array.isArray(body.items) ? body.items.slice(0, 50) : [];
   if (!items.length) throw new HttpError(400, 'Корзина пуста');
   const name = str(body.customer_name, 80);
@@ -715,7 +766,7 @@ route('POST', '/api/orders', ({ user, body, req }) => {
   const address = str(body.address, 300);
   if (delivery === 'courier' && !address) throw new HttpError(400, 'Укажите адрес доставки по Варшаве');
   const orderId = tx(() => {
-    const r = db.prepare('INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment) VALUES (?,?,?,?,?,?,?)')
+    const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,consent_at) VALUES (?,?,?,?,?,?,?,datetime('now'))")
       .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000));
     const oid = Number(r.lastInsertRowid);
     let total = 0;
@@ -733,6 +784,7 @@ route('POST', '/api/orders', ({ user, body, req }) => {
     db.prepare('UPDATE orders SET total = ? WHERE id = ?').run(total, oid);
     return oid;
   });
+  sheets.schedule();
   return { order: getOrder(orderId) };
 });
 function getOrder(id) {
@@ -770,7 +822,8 @@ route('PUT', '/api/orders/:id/status', ({ user, params, body }) => {
         if (p) applyMovement(p, 'return', it.qty, `Отмена заказа №${o.id}`, user, o.id);
       }
     }
-    db.prepare("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, o.id);
+    db.prepare("UPDATE orders SET status = ?, manager_name = ?, sheet_ver = sheet_ver + 1, updated_at = datetime('now') WHERE id = ?").run(status, user.name, o.id);
+    sheets.schedule();
     audit(user, 'Статус заказа', `№${o.id}: ${ORDER_STATUSES[o.status]} → ${ORDER_STATUSES[status]}`);
   });
   return { order: getOrder(params.id) };
@@ -827,6 +880,36 @@ route('PUT', '/api/users/:id', ({ user, params, body }) => {
 });
 
 // --- Журнал и сводка ---
+// Право на удаление данных (RODO, ст. 17). Заказы остаются для бухгалтерии, но отвязываются от аккаунта.
+route('POST', '/api/me/delete', ({ user, body, req, res }) => {
+  need(user);
+  if (user.role !== 'customer') throw new HttpError(400, 'Учётную запись сотрудника удаляет администратор');
+  if (!verifyPassword(String(body.password || ''), user.password_hash)) throw new HttpError(400, 'Пароль указан неверно');
+  tx(() => {
+    db.prepare('UPDATE orders SET user_id = NULL WHERE user_id = ?').run(user.id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+  });
+  res.setHeader('Set-Cookie', `sid=; ${cookieAttrs(req)}; Max-Age=0`);
+  return { ok: true };
+});
+
+// --- Google Таблица ---
+route('GET', '/api/sheets/status', ({ user }) => {
+  need(user, 'users.manage');
+  return sheets.status();
+});
+route('POST', '/api/sheets/sync', async ({ user, body }) => {
+  need(user, 'users.manage');
+  if (!sheets.configured) throw new HttpError(400, 'Связь не настроена: задайте SHEETS_WEBAPP_URL и SHEETS_SECRET на сервере');
+  try {
+    const r = await sheets.syncNow({ full: body.full === true });
+    audit(user, body.full ? 'Полная выгрузка в Google Таблицу' : 'Синхронизация с Google Таблицей', r.warnings.length ? `предупреждений: ${r.warnings.length}` : '');
+    return { ok: true, warnings: r.warnings, status: sheets.status() };
+  } catch (e) {
+    throw new HttpError(502, e.message);
+  }
+});
+
 route('GET', '/api/log', ({ user }) => {
   need(user, 'log.view');
   return { log: db.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT 500').all() };
@@ -956,6 +1039,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
-  server.listen(PORT, () => console.log(`SHUL.FISH запущен: http://localhost:${PORT}`));
+  server.listen(PORT, () => {
+    console.log(`SHUL.FISH запущен: http://localhost:${PORT}`);
+    if (sheets.configured) { sheets.start(); console.log('Связь с Google Таблицей включена'); }
+  });
 }
-module.exports = { server, db };
+module.exports = { server, db, sheets };
