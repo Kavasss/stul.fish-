@@ -476,6 +476,8 @@ async function viewAdmin(section = 'dashboard') {
 function adminDashboard(main, stats) {
   const perms = state.me.permissions.map((p) => `<li>${esc(state.meta.permissions[p])}</li>`).join('');
   main.innerHTML = `<h2>Сводка</h2>
+    ${stats.weak_passwords ? `<div class="panel" style="border-color:var(--danger);margin-bottom:20px"><h3 style="color:var(--danger)">⚠ Небезопасные пароли</h3>
+      <p>У этих учётных записей стоит общеизвестный пароль: <b>${stats.weak_passwords.map(esc).join(', ')}</b>. Любой может войти под ними — смените пароли в разделе «Сотрудники» или в личном кабинете.</p></div>` : ''}
     <div class="stats">
       ${'orders_new' in stats ? `<a href="#/admin/orders" class="stat"><div class="v">${stats.orders_new}</div><div class="l">Новых заказов</div></a>
       <div class="stat"><div class="v">${stats.orders_active}</div><div class="l">Заказов в работе</div></div>` : ''}

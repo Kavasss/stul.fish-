@@ -219,13 +219,26 @@ function audit(user, action, details = '') {
 /* ------------------------------------------------------------------ */
 function seed() {
   if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
-    const adminPw = process.env.ADMIN_PASSWORD || 'admin12345';
-    const managerPw = process.env.MANAGER_PASSWORD || 'manager12345';
+    // Никаких паролей по умолчанию: либо из переменных окружения, либо случайные.
+    const gen = () => crypto.randomBytes(12).toString('base64url');
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@shul.fish';
+    const adminPw = process.env.ADMIN_PASSWORD || gen();
+    const managerPw = process.env.MANAGER_PASSWORD || gen();
+    if (adminPw.length < 8 || managerPw.length < 8) throw new Error('ADMIN_PASSWORD и MANAGER_PASSWORD должны быть не короче 8 символов');
     db.prepare('INSERT INTO users (email,name,role,password_hash,permissions) VALUES (?,?,?,?,?)')
-      .run(process.env.ADMIN_EMAIL || 'admin@shul.fish', 'Администратор', 'admin', hashPassword(adminPw), '[]');
+      .run(adminEmail, 'Администратор', 'admin', hashPassword(adminPw), '[]');
     db.prepare('INSERT INTO users (email,name,role,password_hash,permissions) VALUES (?,?,?,?,?)')
       .run('manager@shul.fish', 'Менеджер', 'manager', hashPassword(managerPw), JSON.stringify(DEFAULT_MANAGER_PERMS));
-    console.log('Созданы учётные записи: admin@shul.fish и manager@shul.fish (смените пароли в админке!)');
+    if (!process.env.ADMIN_PASSWORD || !process.env.MANAGER_PASSWORD) {
+      // Файл доступен только владельцу и лежит вне публичной папки
+      const credFile = path.join(DATA_DIR, 'FIRST-LOGIN.txt');
+      fs.writeFileSync(credFile,
+        `Первый вход в SHUL.FISH. Смените пароли в кабинете и удалите этот файл.\n\n` +
+        `Администратор: ${adminEmail} / ${process.env.ADMIN_PASSWORD ? '(задан через ADMIN_PASSWORD)' : adminPw}\n` +
+        `Менеджер:      manager@shul.fish / ${process.env.MANAGER_PASSWORD ? '(задан через MANAGER_PASSWORD)' : managerPw}\n`,
+        { mode: 0o600 });
+      console.log(`Созданы учётные записи сотрудников. Пароли записаны в ${credFile}`);
+    }
   }
   if (!db.prepare('SELECT 1 FROM products LIMIT 1').get()) {
     const items = [
@@ -258,30 +271,49 @@ function seed() {
 }
 seed();
 
+// Предупреждение, если в старой базе остались известные пароли из первой версии
+const KNOWN_WEAK = ['admin12345', 'manager12345'];
+function weakStaffAccounts() {
+  return db.prepare("SELECT * FROM users WHERE role IN ('admin','manager') AND active = 1").all()
+    .filter((u) => KNOWN_WEAK.some((pw) => verifyPassword(pw, u.password_hash)))
+    .map((u) => u.email);
+}
+let WEAK_ACCOUNTS = weakStaffAccounts();
+if (WEAK_ACCOUNTS.length) console.warn(`⚠ ВНИМАНИЕ: у ${WEAK_ACCOUNTS.join(', ')} стоит общеизвестный пароль. Смените его немедленно!`);
+
 /* ------------------------------------------------------------------ */
 /* Сессии и запросы                                                     */
 /* ------------------------------------------------------------------ */
+// В базе храним только хэш токена: утечка файла БД не даёт войти под чужой сессией.
+const tokenHash = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
 function parseCookies(req) {
   const out = {};
   for (const part of String(req.headers.cookie || '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i > 0) {
+      try { out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim()); } catch { /* битая cookie */ }
+    }
   }
   return out;
 }
 function getUser(req) {
   const token = parseCookies(req).sid;
-  if (!token) return null;
+  if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
   const row = db.prepare(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-                          WHERE s.token = ? AND s.expires_at > ? AND u.active = 1`).get(token, Date.now());
+                          WHERE s.token = ? AND s.expires_at > ? AND u.active = 1`).get(tokenHash(token), Date.now());
   return row || null;
 }
-function createSession(res, userId) {
+const isHttps = (req) => process.env.COOKIE_SECURE === '1' || req.headers['x-forwarded-proto'] === 'https' || !!req.socket.encrypted;
+function cookieAttrs(req) {
+  return `HttpOnly; Path=/; SameSite=Lax${isHttps(req) ? '; Secure' : ''}`;
+}
+function createSession(req, res, userId) {
   const token = crypto.randomBytes(32).toString('hex');
   db.prepare('INSERT INTO sessions (token,user_id,expires_at) VALUES (?,?,?)')
-    .run(token, userId, Date.now() + SESSION_DAYS * 864e5);
+    .run(tokenHash(token), userId, Date.now() + SESSION_DAYS * 864e5);
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
-  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}`);
+  res.setHeader('Set-Cookie', `sid=${token}; ${cookieAttrs(req)}; Max-Age=${SESSION_DAYS * 86400}`);
+  return token;
 }
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -310,16 +342,24 @@ function send(res, status, data, headers = {}) {
   res.end(body);
 }
 
-// Простая защита от перебора паролей
-const loginAttempts = new Map();
-function checkRate(ip) {
+// Ограничение частоты: перебор паролей, массовая регистрация, фейковые заказы
+const rateBuckets = new Map();
+function rateLimit(kind, key, max, windowMs, message) {
   const now = Date.now();
-  const rec = loginAttempts.get(ip) || { n: 0, t: now };
-  if (now - rec.t > 15 * 60e3) { rec.n = 0; rec.t = now; }
+  const id = `${kind}:${key}`;
+  const rec = rateBuckets.get(id) || { n: 0, t: now };
+  if (now - rec.t > windowMs) { rec.n = 0; rec.t = now; }
   rec.n++;
-  loginAttempts.set(ip, rec);
-  if (rec.n > 20) throw new HttpError(429, 'Слишком много попыток входа. Попробуйте через 15 минут.');
+  rateBuckets.set(id, rec);
+  if (rec.n > max) throw new HttpError(429, message);
 }
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of rateBuckets) if (now - v.t > 3600e3) rateBuckets.delete(k);
+}, 600e3).unref();
+const clientIp = (req) => (process.env.TRUST_PROXY === '1' && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress || '';
+// Одинаковое время ответа для существующего и несуществующего e-mail
+const DUMMY_HASH = hashPassword(crypto.randomBytes(16).toString('hex'));
 
 /* ------------------------------------------------------------------ */
 /* Товары                                                               */
@@ -335,9 +375,15 @@ function shapeProduct(p, imgs, user) {
   const out = {
     id: p.id, sku: p.sku, name: p.name, category: p.category, category_name: CATEGORIES[p.category] || p.category,
     description: p.description, price: p.price / 100, unit: p.unit,
-    in_stock: p.stock > 0, stock: p.stock, active: !!p.active, featured: !!p.featured, badge: p.badge,
-    images: imgs[p.id] || [], updated_at: p.updated_at,
+    in_stock: p.stock > 0, featured: !!p.featured, badge: p.badge,
+    images: imgs[p.id] || [],
   };
+  // Точные остатки, видимость и даты изменения — только сотрудникам
+  if (seesStock(user)) {
+    out.stock = p.stock;
+    out.active = !!p.active;
+    out.updated_at = p.updated_at;
+  }
   if (can(user, 'inventory.view') || can(user, 'products.price')) {
     out.cost = p.cost / 100;
     out.min_stock = p.min_stock;
@@ -349,9 +395,17 @@ function getProductRow(id) {
   if (!p) throw new HttpError(404, 'Товар не найден');
   return p;
 }
+function seesStock(user) {
+  return can(user, 'inventory.view') || can(user, 'stock.manage') || can(user, 'products.edit');
+}
 function applyMovement(product, type, qty, note, user, orderId = null) {
   const balance = round3(product.stock + qty);
-  if (balance < 0) throw new HttpError(409, `Недостаточно товара «${product.name}» на складе (остаток ${product.stock} ${product.unit})`);
+  if (balance < 0) {
+    // Покупателю не раскрываем точный остаток склада
+    throw new HttpError(409, seesStock(user)
+      ? `Недостаточно товара «${product.name}» на складе (остаток ${product.stock} ${product.unit})`
+      : `Товара «${product.name}» нет в таком количестве. Уменьшите количество или свяжитесь с нами.`);
+  }
   db.prepare("UPDATE products SET stock = ?, updated_at = datetime('now') WHERE id = ?").run(balance, product.id);
   db.prepare('INSERT INTO stock_movements (product_id,product_name,type,qty,balance_after,unit_cost,note,user_id,order_id) VALUES (?,?,?,?,?,?,?,?,?)')
     .run(product.id, product.name, type, round3(qty), balance, product.cost, note, user ? user.id : null, orderId);
@@ -377,7 +431,8 @@ function need(user, perm) {
 route('GET', '/api/meta', () => ({ categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, default_manager_perms: DEFAULT_MANAGER_PERMS }));
 route('GET', '/api/me', ({ user }) => ({ user: publicUser(user) }));
 
-route('POST', '/api/auth/register', ({ body, res }) => {
+route('POST', '/api/auth/register', ({ body, req, res }) => {
+  rateLimit('register', clientIp(req), 10, 3600e3, 'Слишком много регистраций. Попробуйте позже.');
   const email = str(body.email, 120).toLowerCase();
   const name = str(body.name, 80);
   const password = String(body.password || '');
@@ -387,33 +442,45 @@ route('POST', '/api/auth/register', ({ body, res }) => {
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new HttpError(409, 'Такой e-mail уже зарегистрирован');
   const r = db.prepare("INSERT INTO users (email,name,phone,role,password_hash) VALUES (?,?,?,'customer',?)")
     .run(email, name, str(body.phone, 30), hashPassword(password));
-  createSession(res, r.lastInsertRowid);
+  createSession(req, res, r.lastInsertRowid);
   const u = db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
   return { user: publicUser(u) };
 });
 route('POST', '/api/auth/login', ({ body, res, req }) => {
-  checkRate(req.socket.remoteAddress);
-  const u = db.prepare('SELECT * FROM users WHERE email = ?').get(str(body.email, 120).toLowerCase());
-  if (!u || !verifyPassword(String(body.password || ''), u.password_hash)) throw new HttpError(401, 'Неверный e-mail или пароль');
+  const email = str(body.email, 120).toLowerCase();
+  const tooMany = 'Слишком много попыток входа. Попробуйте через 15 минут.';
+  rateLimit('login-ip', clientIp(req), 20, 15 * 60e3, tooMany);
+  rateLimit('login-email', email, 10, 15 * 60e3, tooMany); // защита конкретного аккаунта от перебора с разных IP
+  const u = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const ok = verifyPassword(String(body.password || ''), u ? u.password_hash : DUMMY_HASH);
+  if (!u || !ok) throw new HttpError(401, 'Неверный e-mail или пароль');
   if (!u.active) throw new HttpError(403, 'Учётная запись заблокирована');
-  createSession(res, u.id);
+  createSession(req, res, u.id);
   if (u.role !== 'customer') audit(u, 'Вход в систему');
   return { user: publicUser(u) };
 });
 route('POST', '/api/auth/logout', ({ req, res }) => {
   const token = parseCookies(req).sid;
-  if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
-  res.setHeader('Set-Cookie', 'sid=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
+  if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(tokenHash(token));
+  res.setHeader('Set-Cookie', `sid=; ${cookieAttrs(req)}; Max-Age=0`);
   return { ok: true };
 });
-route('PUT', '/api/me', ({ user, body }) => {
+route('PUT', '/api/me', ({ user, body, req, res }) => {
   need(user);
-  const name = str(body.name, 80) || user.name;
-  db.prepare('UPDATE users SET name = ?, phone = ? WHERE id = ?').run(name, str(body.phone, 30), user.id);
+  // Сначала проверяем всё, потом сохраняем — без частичных изменений при ошибке
   if (body.new_password) {
     if (!verifyPassword(String(body.old_password || ''), user.password_hash)) throw new HttpError(400, 'Текущий пароль указан неверно');
     if (String(body.new_password).length < 8) throw new HttpError(400, 'Новый пароль должен быть не короче 8 символов');
+  }
+  const name = str(body.name, 80) || user.name;
+  db.prepare('UPDATE users SET name = ?, phone = ? WHERE id = ?').run(name, str(body.phone, 30), user.id);
+  if (body.new_password) {
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(String(body.new_password)), user.id);
+    // Выходим на всех остальных устройствах, текущую сессию пересоздаём
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+    createSession(req, res, user.id);
+    WEAK_ACCOUNTS = weakStaffAccounts();
+    if (user.role !== 'customer') audit(user, 'Смена собственного пароля');
   }
   return { user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(user.id)) };
 });
@@ -617,7 +684,12 @@ route('GET', '/api/inventory.csv', ({ user, query, res }) => {
   need(user, 'inventory.view');
   const rep = inventoryReport(...periodFromQuery(query));
   const head = ['Артикул', 'Товар', 'Категория', 'Ед.', 'Остаток', 'Мин. остаток', 'Себестоимость', 'Цена', 'Сумма по себест.', 'Сумма по цене', `Приход ${rep.from}–${rep.to}`, 'Продано', 'Расход/списание', 'Корректировки', 'Статус'];
-  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // Защита от формул в Excel: текст, начинающийся с = + - @, экранируем апострофом
+  const esc = (v) => {
+    let s = String(v ?? '');
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return `"${s.replace(/"/g, '""')}"`;
+  };
   const lines = [head.map(esc).join(';')];
   for (const r of rep.rows) {
     lines.push([r.sku, r.name, r.category, r.unit, r.stock, r.min_stock, r.cost, r.price, r.cost_value, r.retail_value, r.period_in, r.period_sold, r.period_out, r.period_adjust,
@@ -631,7 +703,9 @@ route('GET', '/api/inventory.csv', ({ user, query, res }) => {
 });
 
 // --- Заказы ---
-route('POST', '/api/orders', ({ user, body }) => {
+route('POST', '/api/orders', ({ user, body, req }) => {
+  // Не даём боту «выкупить» склад фейковыми заказами
+  if (!seesStock(user)) rateLimit('order', clientIp(req), 10, 3600e3, 'Слишком много заказов подряд. Позвоните нам, и мы оформим заказ вручную.');
   const items = Array.isArray(body.items) ? body.items.slice(0, 50) : [];
   if (!items.length) throw new HttpError(400, 'Корзина пуста');
   const name = str(body.customer_name, 80);
@@ -647,7 +721,8 @@ route('POST', '/api/orders', ({ user, body }) => {
     let total = 0;
     for (const it of items) {
       const p = getProductRow(it.product_id);
-      if (!p.active) throw new HttpError(409, `Товар «${p.name}» недоступен`);
+      // Скрытый товар выглядит для покупателя так же, как несуществующий — название не раскрываем
+      if (!p.active) throw new HttpError(404, 'Товар не найден');
       const step = p.unit === 'кг' ? 0.5 : 1;
       const qty = round3(num(it.qty, { min: step, max: 1000, name: 'количество' }));
       if (Math.abs(qty / step - Math.round(qty / step)) > 1e-6) throw new HttpError(400, `Количество «${p.name}» должно быть кратно ${step}`);
@@ -745,6 +820,7 @@ route('PUT', '/api/users/:id', ({ user, params, body }) => {
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(String(body.password)), target.id);
     db.prepare('DELETE FROM sessions WHERE user_id = ? ').run(target.id);
     changes.push('пароль сброшен');
+    WEAK_ACCOUNTS = weakStaffAccounts();
   }
   if (changes.length) audit(user, 'Изменён пользователь', `${target.email}: ${changes.join(', ')}`);
   return { user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(target.id)) };
@@ -768,6 +844,9 @@ route('GET', '/api/stats', ({ user }) => {
     out.low_stock = db.prepare('SELECT id, name, stock, min_stock, unit FROM products WHERE stock <= min_stock ORDER BY stock').all();
     out.products = db.prepare('SELECT COUNT(*) c FROM products').get().c;
   }
+  if (user.role === 'admin' && WEAK_ACCOUNTS.length) {
+    out.weak_passwords = WEAK_ACCOUNTS;
+  }
   return out;
 });
 
@@ -782,9 +861,19 @@ const MIME = {
 function serveStatic(req, res, pathname) {
   let base = PUBLIC_DIR;
   let rel = pathname;
-  if (pathname.startsWith('/uploads/')) { base = UPLOAD_DIR; rel = pathname.slice('/uploads'.length); }
-  const file = path.normalize(path.join(base, decodeURIComponent(rel)));
+  if (pathname.startsWith('/uploads/')) {
+    base = UPLOAD_DIR;
+    rel = pathname.slice('/uploads/'.length);
+    // В папке загрузок отдаём только файлы с именем, которое генерирует сервер
+    if (!/^p\d+-[a-f0-9]{16}\.(jpg|png|webp)$/.test(rel)) return send(res, 404, { error: 'Не найдено' });
+  }
+  let decoded;
+  try { decoded = decodeURIComponent(rel); } catch { return send(res, 400, { error: 'Некорректный адрес' }); }
+  if (decoded.includes('\0')) return send(res, 400, { error: 'Некорректный адрес' });
+  const file = path.normalize(path.join(base, decoded));
   if (!file.startsWith(base + path.sep) && file !== base) return send(res, 403, { error: 'Forbidden' });
+  // Скрытые файлы (.env, .git и т.п.) не отдаём
+  if (path.relative(base, file).split(path.sep).some((seg) => seg.startsWith('.'))) return send(res, 404, { error: 'Не найдено' });
   fs.stat(file, (err, st) => {
     let target = file;
     if (err || st.isDirectory()) {
@@ -795,27 +884,66 @@ function serveStatic(req, res, pathname) {
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Cache-Control': base === UPLOAD_DIR ? 'public, max-age=31536000, immutable' : 'no-cache',
-      'X-Content-Type-Options': 'nosniff',
     });
-    fs.createReadStream(target).pipe(res);
+    if (req.method === 'HEAD') return res.end();
+    const stream = fs.createReadStream(target);
+    stream.on('error', () => { if (!res.headersSent) send(res, 500, { error: 'Ошибка чтения' }); else res.destroy(); });
+    stream.pipe(res);
   });
 }
 
+// Защитные заголовки для всех ответов
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+function securityHeaders(req, res) {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  if (isHttps(req)) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+}
+// Изменяющие запросы принимаем только с нашего же сайта (защита от CSRF)
+function checkOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return; // запросы не из браузера (curl, тесты) cookie чужого пользователя не несут
+  let host;
+  try { host = new URL(origin).host; } catch { throw new HttpError(403, 'Запрос с чужого сайта отклонён'); }
+  const allowed = [req.headers.host, ...String(process.env.ALLOWED_HOSTS || '').split(',').map((s) => s.trim()).filter(Boolean)];
+  if (!allowed.includes(host)) throw new HttpError(403, 'Запрос с чужого сайта отклонён');
+}
+
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://localhost');
+  securityHeaders(req, res);
+  let url;
+  try { url = new URL(req.url, 'http://localhost'); } catch { return send(res, 400, { error: 'Некорректный адрес' }); }
   const pathname = url.pathname;
   if (!pathname.startsWith('/api/')) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Method not allowed' });
-    return serveStatic(req, res, pathname);
+    try { return serveStatic(req, res, pathname); } catch (e) { console.error(e); return send(res, 500, { error: 'Внутренняя ошибка сервера' }); }
   }
   try {
     const r = routes.find((rt) => rt.method === req.method && rt.re.test(pathname));
     if (!r) throw new HttpError(404, 'Метод API не найден');
-    if (req.method !== 'GET' && !String(req.headers['content-type'] || '').includes('application/json') && req.headers['content-length'] !== '0' && req.method !== 'DELETE') {
+    if (req.method !== 'GET') checkOrigin(req);
+    if ((req.method === 'POST' || req.method === 'PUT') && !String(req.headers['content-type'] || '').startsWith('application/json')) {
       throw new HttpError(415, 'Ожидается application/json');
     }
     const m = r.re.exec(pathname);
-    const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
+    let params;
+    try { params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])])); }
+    catch { throw new HttpError(400, 'Некорректный адрес'); }
     const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readBody(req);
     const user = getUser(req);
     const result = await r.handler({ req, res, user, params, body, query: url.searchParams });

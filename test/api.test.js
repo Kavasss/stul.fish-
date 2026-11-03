@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shulfish-test-'));
+process.env.ADMIN_PASSWORD = 'admin-test-pass';
+process.env.MANAGER_PASSWORD = 'manager-test-pass';
 const { server } = require('../server.js');
 let base;
 
@@ -34,8 +36,8 @@ const guest = client();
 const customer = client();
 
 test('вход админа и менеджера, неверный пароль', async () => {
-  assert.equal((await admin('POST', '/api/auth/login', { email: 'admin@shul.fish', password: 'admin12345' })).status, 200);
-  const m = await manager('POST', '/api/auth/login', { email: 'manager@shul.fish', password: 'manager12345' });
+  assert.equal((await admin('POST', '/api/auth/login', { email: 'admin@shul.fish', password: 'admin-test-pass' })).status, 200);
+  const m = await manager('POST', '/api/auth/login', { email: 'manager@shul.fish', password: 'manager-test-pass' });
   assert.equal(m.data.user.role, 'manager');
   assert.ok(!m.data.user.permissions.includes('products.price'));
   assert.equal((await guest('POST', '/api/auth/login', { email: 'admin@shul.fish', password: 'nope' })).status, 401);
@@ -80,15 +82,15 @@ test('склад: приход, списание без причины запр�
 });
 
 test('заказ списывает остаток, отмена возвращает', async () => {
-  const before = (await guest('GET', '/api/products/1')).data.product.stock;
+  const before = (await manager('GET', '/api/products/1')).data.product.stock;
   const o = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48 600 100 200', address: 'Marszałkowska 1', items: [{ product_id: 1, qty: 1.5 }] });
   assert.equal(o.status, 200, JSON.stringify(o.data));
-  assert.equal((await guest('GET', '/api/products/1')).data.product.stock, before - 1.5);
+  assert.equal((await manager('GET', '/api/products/1')).data.product.stock, before - 1.5);
   assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', items: [{ product_id: 1, qty: 0.3 }] })).status, 400);
   assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', items: [{ product_id: 1, qty: 999 }] })).status, 409);
   const c = await manager('PUT', `/api/orders/${o.data.order.id}/status`, { status: 'cancelled' });
   assert.equal(c.data.order.status, 'cancelled');
-  assert.equal((await guest('GET', '/api/products/1')).data.product.stock, before);
+  assert.equal((await manager('GET', '/api/products/1')).data.product.stock, before);
 });
 
 test('покупатель регистрируется и видит свои заказы', async () => {
@@ -131,4 +133,119 @@ test('отчёт склада и CSV', async () => {
 test('статика: запрет выхода за пределы папки', async () => {
   const r = await fetch(base + '/uploads/..%2f..%2fshop.db');
   assert.notEqual(r.status, 200);
+});
+
+/* ---------------- Безопасность ---------------- */
+const http = require('node:http');
+function rawGet(p) {
+  return new Promise((resolve) => {
+    const u = new URL(base);
+    http.get({ host: u.hostname, port: u.port, path: p }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+  });
+}
+
+test('гость не видит точные остатки, видимость и даты изменений', async () => {
+  const list = (await guest('GET', '/api/products')).data.products;
+  for (const p of list) {
+    for (const k of ['stock', 'cost', 'min_stock', 'active', 'updated_at']) assert.equal(p[k], undefined, `поле ${k} утекает`);
+  }
+  assert.equal(typeof list[0].in_stock, 'boolean');
+  const one = (await guest('GET', '/api/products/1')).data.product;
+  assert.equal(one.stock, undefined);
+  // ?all=1 для гостя игнорируется
+  const all = (await guest('GET', '/api/products?all=1')).data.products;
+  assert.ok(all.every((p) => p.stock === undefined));
+});
+
+test('ошибка заказа не раскрывает остаток склада', async () => {
+  const r = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', items: [{ product_id: 2, qty: 999 }] });
+  assert.equal(r.status, 409);
+  assert.doesNotMatch(r.data.error, /\d+\s*(уп|кг|шт|банка)|остаток/);
+});
+
+test('скрытый товар не виден и не раскрывается через заказ', async () => {
+  const created = await admin('POST', '/api/products', { name: 'Секретная новинка', category: 'caviar', unit: 'шт', price: 10, cost: 5, initial_stock: 5, active: false });
+  const id = created.data.product.id;
+  assert.equal((await guest('GET', `/api/products/${id}`)).status, 404);
+  assert.ok(!(await guest('GET', '/api/products?q=Секретная')).data.products.length);
+  const r = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', items: [{ product_id: id, qty: 1 }] });
+  assert.equal(r.status, 404);
+  assert.doesNotMatch(JSON.stringify(r.data), /Секретная/);
+});
+
+test('покупатель не получает служебные данные', async () => {
+  for (const url of ['/api/stock/movements', '/api/inventory', '/api/inventory.csv', '/api/orders', '/api/users', '/api/log', '/api/stats']) {
+    assert.equal((await customer('GET', url)).status, 403, url);
+    assert.equal((await guest('GET', url)).status, 401, url);
+  }
+});
+
+test('битые адреса не роняют сервер, обход папок и скрытые файлы закрыты', async () => {
+  assert.equal(await rawGet('/%E0%A4%A'), 400);
+  assert.equal(await rawGet('/api/products/%E0%A4%A'), 400);
+  for (const p of ['/uploads/%2e%2e/shop.db', '/uploads/..%2fshop.db', '/%2e%2e/data/shop.db']) {
+    const body = await (await fetch(base + p)).text();
+    assert.doesNotMatch(body, /SQLite format/, p + ' отдал базу');
+  }
+  assert.equal(await rawGet('/uploads/shop.db'), 404);
+  assert.equal(await rawGet('/../data/shop.db'), 200); // нормализуется в /data/shop.db → отдаётся index.html, а не база
+  const r = await fetch(base + '/../data/shop.db');
+  assert.match(await r.text(), /<!doctype html>/i);
+  assert.equal(await rawGet('/.git/config'), 404);
+  assert.equal((await fetch(base + '/api/me')).status, 200, 'сервер жив');
+});
+
+test('защитные заголовки', async () => {
+  const r = await fetch(base + '/');
+  assert.equal(r.headers.get('x-frame-options'), 'DENY');
+  assert.match(r.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+});
+
+test('CSRF: запрос с чужого сайта отклоняется, с нашего — проходит', async () => {
+  const evil = await fetch(base + '/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' }, body: '{}' });
+  assert.equal(evil.status, 403);
+  const ok = await fetch(base + '/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: '{}' });
+  assert.equal(ok.status, 200);
+  const form = await fetch(base + '/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: '' });
+  assert.equal(form.status, 415);
+});
+
+test('сессии хранятся в виде хэша', async () => {
+  const { db } = require('../server.js');
+  const rows = db.prepare('SELECT token FROM sessions').all();
+  assert.ok(rows.length > 0);
+  const c = client();
+  await c('POST', '/api/auth/login', { email: 'anna@example.com', password: 'password1' });
+  // подставить хэш из базы как cookie не получится
+  const stolen = rows[0].token;
+  const r = await fetch(base + '/api/me', { headers: { Cookie: `sid=${stolen}` } });
+  assert.equal((await r.json()).user, null);
+});
+
+test('смена пароля выкидывает другие сессии', async () => {
+  const a = client();
+  const b = client();
+  await a('POST', '/api/auth/register', { name: 'Пётр', email: 'petr@example.com', password: 'password1' });
+  await b('POST', '/api/auth/login', { email: 'petr@example.com', password: 'password1' });
+  assert.ok((await b('GET', '/api/me')).data.user);
+  assert.equal((await a('PUT', '/api/me', { old_password: 'password1', new_password: 'password2' })).status, 200);
+  assert.ok((await a('GET', '/api/me')).data.user, 'текущая сессия остаётся');
+  assert.equal((await b('GET', '/api/me')).data.user, null, 'другая сессия завершена');
+  // неверный старый пароль не меняет и имя
+  assert.equal((await a('PUT', '/api/me', { name: 'Хакер', old_password: 'wrong', new_password: 'password3' })).status, 400);
+  assert.equal((await a('GET', '/api/me')).data.user.name, 'Пётр');
+});
+
+test('перебор пароля блокируется по e-mail', async () => {
+  const c = client();
+  let last;
+  for (let i = 0; i < 11; i++) last = await c('POST', '/api/auth/login', { email: 'victim@example.com', password: 'x' + i });
+  assert.equal(last.status, 429);
+});
+
+test('CSV экранирует формулы Excel', async () => {
+  await admin('POST', '/api/products', { name: '=HYPERLINK("http://evil")', category: 'sets', unit: 'шт', price: 1, cost: 1 });
+  const csv = (await admin('GET', '/api/inventory.csv')).data;
+  assert.match(csv, /"'=HYPERLINK/);
 });
