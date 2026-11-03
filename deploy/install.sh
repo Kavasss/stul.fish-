@@ -29,9 +29,22 @@ need_node=1
 if command -v node >/dev/null; then
   node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=13)?0:1)' && need_node=0
 fi
+node_ok() { command -v node >/dev/null && node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=13)?0:1)'; }
 if [ "$need_node" -eq 1 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y -q nodejs
+  { curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y -q nodejs; } || true
+fi
+# Запасной путь (новые дистрибутивы, которых ещё нет у NodeSource): официальная сборка с nodejs.org
+if ! node_ok; then
+  say "Ставлю Node.js 22 с nodejs.org"
+  case "$(uname -m)" in x86_64) NARCH=x64 ;; aarch64) NARCH=arm64 ;; *) die "неизвестная архитектура $(uname -m)" ;; esac
+  NVER="$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt | grep -oE 'node-v22\.[0-9]+\.[0-9]+-linux-'"$NARCH"'\.tar\.xz' | head -1)"
+  [ -n "$NVER" ] || die "не удалось найти сборку Node.js 22"
+  TMPN="$(mktemp -d)"
+  curl -fsSL "https://nodejs.org/dist/latest-v22.x/$NVER" -o "$TMPN/$NVER"
+  curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt | grep " $NVER\$" | (cd "$TMPN" && sha256sum -c -) || die "контрольная сумма Node.js не совпала"
+  tar -xJf "$TMPN/$NVER" -C /usr/local --strip-components=1
+  ln -sf /usr/local/bin/node /usr/bin/node
+  rm -rf -- "$TMPN"
 fi
 node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=13)?0:1)' \
   || die "нужен Node.js 22.13 или новее, установлен $(node -v)"
