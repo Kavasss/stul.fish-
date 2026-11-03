@@ -1,13 +1,13 @@
 'use strict';
-/* SHUL.FISH — клиентское приложение (без фреймворков) */
+/* SHUL.FISH — клиентское приложение (без фреймворков). Витрина: RU/PL (i18n.js), админка: RU. */
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const app = $('#app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const zl = (n) => `${Number(n).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} zł`;
-const fmtQty = (n) => Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 3 });
-const fmtDate = (s) => (s ? new Date(s.replace(' ', 'T') + 'Z').toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '');
+const zl = (n) => `${Number(n).toLocaleString(LOCALE(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} zł`;
+const fmtQty = (n) => Number(n).toLocaleString(LOCALE(), { maximumFractionDigits: 3 });
+const fmtDate = (s) => (s ? new Date(s.replace(' ', 'T') + 'Z').toLocaleString(LOCALE(), { dateStyle: 'short', timeStyle: 'short' }) : '');
 const stepFor = (unit) => (unit === 'кг' ? 0.5 : 1);
 
 const state = { me: null, meta: null, cart: loadCart() };
@@ -19,15 +19,20 @@ async function api(method, url, body) {
   const res = await fetch(url, opts);
   let data = {};
   try { data = await res.json(); } catch { /* пусто */ }
-  if (!res.ok) throw new Error(data.error || `Ошибка ${res.status}`);
+  if (!res.ok) {
+    let msg = trError(data.error || t('common.errorCode', { code: res.status }));
+    // в сообщениях сервера названия товаров русские — подставляем польские из корзины
+    if (LANG === 'pl') for (const i of state.cart) if (i.name_pl) msg = msg.split(i.name).join(i.name_pl);
+    throw new Error(msg);
+  }
   return data;
 }
 function toast(msg, isErr = false) {
-  const t = document.createElement('div');
-  t.className = 'toast' + (isErr ? ' err' : '');
-  t.textContent = msg;
-  $('#toasts').append(t);
-  setTimeout(() => t.remove(), 3800);
+  const el = document.createElement('div');
+  el.className = 'toast' + (isErr ? ' err' : '');
+  el.textContent = msg;
+  $('#toasts').append(el);
+  setTimeout(() => el.remove(), 3800);
 }
 const can = (p) => !!state.me && state.me.permissions.includes(p);
 const isStaff = () => !!state.me && (state.me.role === 'admin' || state.me.role === 'manager');
@@ -47,9 +52,9 @@ function addToCart(p, qty) {
   qty = qty || step;
   const item = state.cart.find((i) => i.id === p.id);
   if (item) item.qty = Math.round((item.qty + qty) * 1000) / 1000;
-  else state.cart.push({ id: p.id, name: p.name, unit: p.unit, price: p.price, image: p.images[0]?.url || null, category: p.category, qty });
+  else state.cart.push({ id: p.id, name: p.name, name_pl: p.name_pl || '', unit: p.unit, price: p.price, image: p.images[0]?.url || null, category: p.category, qty });
   saveCart();
-  toast(`«${p.name}» добавлено в корзину`);
+  toast(t('cart.added', { name: pName(p) }));
 }
 
 /* ---------------- Графика: золотая рыба как на логотипе ---------------- */
@@ -89,7 +94,7 @@ function productArt(category, label = '') {
 }
 function productImage(p) {
   const url = p.image || p.images?.[0]?.url;
-  return url ? `<img src="${esc(url)}" alt="${esc(p.name)}" loading="lazy">` : productArt(p.category);
+  return url ? `<img src="${esc(url)}" alt="${esc(pName(p))}" loading="lazy">` : productArt(p.category);
 }
 
 /* ---------------- Модалка ---------------- */
@@ -127,34 +132,43 @@ async function router() {
   for (const [re, fn] of routes) {
     const m = hash.match(re);
     if (m) {
-      try { await fn(...m.slice(1)); } catch (e) { app.innerHTML = `<div class="empty"><div class="big">Ошибка</div>${esc(e.message)}</div>`; }
+      try { await fn(...m.slice(1)); } catch (e) { app.innerHTML = `<div class="empty"><div class="big">${t('common.error')}</div>${esc(e.message)}</div>`; }
       window.scrollTo(0, 0);
       return;
     }
   }
-  app.innerHTML = '<div class="empty"><div class="big">Страница не найдена</div><a class="btn" href="#/">На главную</a></div>';
+  app.innerHTML = `<div class="empty"><div class="big">${t('common.notFound')}</div><a class="btn" href="#/">${t('common.home')}</a></div>`;
 }
 window.addEventListener('hashchange', router);
 $('#burger').addEventListener('click', () => $('#nav').classList.toggle('open'));
+$('#langBtn').addEventListener('click', () => {
+  setLang(LANG === 'pl' ? 'ru' : 'pl');
+  updateHeader();
+  const bar = $('.cookie-bar');
+  if (bar) { bar.remove(); cookieNotice(); }
+  // Убираем ?lang=… из адреса, чтобы он не перебивал выбор при обновлении страницы
+  if (location.search) history.replaceState(null, '', location.pathname + location.hash);
+  router();
+});
 
 function updateHeader() {
   $('#adminLink').classList.toggle('hidden', !isStaff());
-  $('#accountLink').title = state.me ? `Кабинет: ${state.me.name}` : 'Войти';
+  $('#accountLink').title = state.me ? t('nav.accountOf', { name: state.me.name }) : t('nav.login');
 }
 
 /* ---------------- Витрина ---------------- */
 function productCard(p) {
-  const badge = p.badge ? `<span class="badge${p.category === 'caviar' ? ' red' : ''}">${esc(p.badge)}</span>` : '';
-  const stock = !p.in_stock ? '<span class="stock-tag out">Нет в наличии</span>' : '';
+  const badge = p.badge ? `<span class="badge${p.category === 'caviar' ? ' red' : ''}">${esc(badgeName(p.badge))}</span>` : '';
+  const stock = !p.in_stock ? `<span class="stock-tag out">${t('card.outOfStock')}</span>` : '';
   return `<article class="card">
     <a href="#/product/${p.id}" class="card-img">${productImage(p)}${badge}${stock}</a>
     <div class="card-body">
-      <div class="card-cat">${esc(p.category_name)}</div>
-      <a href="#/product/${p.id}" class="card-title">${esc(p.name)}</a>
-      <div class="card-desc">${esc(p.description)}</div>
+      <div class="card-cat">${esc(catName(p.category))}</div>
+      <a href="#/product/${p.id}" class="card-title">${esc(pName(p))}</a>
+      <div class="card-desc">${esc(pDesc(p))}</div>
       <div class="card-foot">
-        <div class="price">${zl(p.price)} <small>/ ${esc(p.unit)}</small></div>
-        <button class="btn sm primary" data-add="${p.id}" ${p.in_stock ? '' : 'disabled'}>${p.in_stock ? 'В корзину' : 'Нет'}</button>
+        <div class="price">${zl(p.price)} <small>/ ${esc(unitName(p.unit))}</small></div>
+        <button class="btn sm primary" data-add="${p.id}" ${p.in_stock ? '' : 'disabled'}>${p.in_stock ? t('card.toCart') : t('card.none')}</button>
       </div>
     </div>
   </article>`;
@@ -168,12 +182,7 @@ function bindAddButtons(products) {
 
 async function viewHome() {
   const { products } = await api('GET', '/api/products?featured=1');
-  const cats = [
-    ['smoked', 'Копчёная', 'Горячего и холодного копчения'],
-    ['cured', 'Вяленая', 'Вобла, тарань, лещ, чехонь'],
-    ['dried', 'Сушёная', 'Корюшка, анчоус, кальмар'],
-    ['caviar', 'Икра', 'Красная и чёрная'],
-  ];
+  const cats = ['smoked', 'cured', 'dried', 'caviar'];
   app.innerHTML = `
   <section class="hero">
     <div class="hero-text">
@@ -181,48 +190,48 @@ async function viewHome() {
       <h1>SHUL<span class="dot">.</span>FISH</h1>
       <div class="hero-sub">Premium quality</div>
       <div class="kinds">
-        <span>${fishIcon()} Копчёная</span><span>${fishIcon()} Вяленая</span><span>${fishIcon()} Сушёная</span>
+        <span>${fishIcon()} ${t('home.kind1')}</span><span>${fishIcon()} ${t('home.kind2')}</span><span>${fishIcon()} ${t('home.kind3')}</span>
       </div>
-      <div class="plaque">РЫБА &amp; ИКРА</div>
+      <div class="plaque">${t('home.plaque')}</div>
       <div class="hero-cta">
-        <a href="#/catalog" class="btn primary">Перейти в каталог</a>
-        <a href="#/catalog/caviar" class="btn">Икра</a>
+        <a href="#/catalog" class="btn primary">${t('home.toCatalog')}</a>
+        <a href="#/catalog/caviar" class="btn">${t('home.caviar')}</a>
       </div>
     </div>
-    <div class="hero-badge"><img src="/img/logo.jpg" alt="SHUL.FISH — копчёная, вяленая, сушёная рыба и икра"></div>
+    <div class="hero-badge"><img src="/img/logo.jpg" alt="${esc(t('home.logoAlt'))}"></div>
   </section>
 
   <div class="features">
-    <div class="feature"><span class="ico"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 19c8 0 14-6 14-14C11 5 5 11 5 19zm0 0 7-7"/></svg></span><div><b>Натуральный продукт</b><span>Без красителей и ароматизаторов</span></div></div>
-    <div class="feature"><span class="ico"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="9" r="6"/><path d="m9 14-2 7 5-3 5 3-2-7"/><path d="m9.5 9 1.7 1.7L14.5 7.5"/></svg></span><div><b>Высокое качество</b><span>Проверенные поставщики</span></div></div>
-    <div class="feature"><span class="ico"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7h11v9H2zM13 10h4l3 3v3h-7z"/><circle cx="6" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/></svg></span><div><b>Доставка по Варшаве</b><span>Курьером в день заказа</span></div></div>
+    <div class="feature"><span class="ico"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 19c8 0 14-6 14-14C11 5 5 11 5 19zm0 0 7-7"/></svg></span><div><b>${t('home.f1')}</b><span>${t('home.f1s')}</span></div></div>
+    <div class="feature"><span class="ico"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="9" r="6"/><path d="m9 14-2 7 5-3 5 3-2-7"/><path d="m9.5 9 1.7 1.7L14.5 7.5"/></svg></span><div><b>${t('home.f2')}</b><span>${t('home.f2s')}</span></div></div>
+    <div class="feature"><span class="ico"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7h11v9H2zM13 10h4l3 3v3h-7z"/><circle cx="6" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/></svg></span><div><b>${t('home.f3')}</b><span>${t('home.f3s')}</span></div></div>
   </div>
 
-  <h2 class="section-title">Категории</h2>
+  <h2 class="section-title">${t('home.categories')}</h2>
   <div class="cats">
-    ${cats.map(([k, t, s]) => `<a href="#/catalog/${k}" class="cat"><div class="cat-art">${productArt(k)}</div><b>${t}</b><span>${s}</span></a>`).join('')}
+    ${cats.map((k) => `<a href="#/catalog/${k}" class="cat"><div class="cat-art">${productArt(k)}</div><b>${t('home.c.' + k)}</b><span>${t('home.c.' + k + '.s')}</span></a>`).join('')}
   </div>
 
-  <h2 class="section-title">Хиты продаж</h2>
-  <div class="grid">${products.map(productCard).join('') || '<div class="empty">Скоро здесь появятся товары</div>'}</div>
-  <div style="text-align:center;margin-top:26px"><a href="#/catalog" class="btn">Весь каталог</a></div>`;
+  <h2 class="section-title">${t('home.hits')}</h2>
+  <div class="grid">${products.map(productCard).join('') || `<div class="empty">${t('home.soon')}</div>`}</div>
+  <div style="text-align:center;margin-top:26px"><a href="#/catalog" class="btn">${t('home.allCatalog')}</a></div>`;
   bindAddButtons(products);
 }
 
 async function viewCatalog(category = '') {
-  const cats = state.meta.categories;
+  const cats = Object.keys(state.meta.categories);
   app.innerHTML = `
-    <h1>${category && cats[category] ? esc(cats[category]) : 'Каталог'}</h1>
+    <h1>${category && cats.includes(category) ? esc(catName(category)) : t('cat.title')}</h1>
     <div class="catalog-head">
       <div class="chips">
-        <a class="chip ${!category ? 'active' : ''}" href="#/catalog">Все</a>
-        ${Object.entries(cats).map(([k, v]) => `<a class="chip ${category === k ? 'active' : ''}" href="#/catalog/${k}">${esc(v)}</a>`).join('')}
+        <a class="chip ${!category ? 'active' : ''}" href="#/catalog">${t('cat.all')}</a>
+        ${cats.map((k) => `<a class="chip ${category === k ? 'active' : ''}" href="#/catalog/${k}">${esc(catName(k))}</a>`).join('')}
       </div>
       <div class="search">
-        <input class="input" id="q" placeholder="Поиск…" style="width:200px">
+        <input class="input" id="q" placeholder="${esc(t('cat.search'))}" style="width:200px">
         <select class="input" id="sort" style="width:auto">
-          <option value="">По популярности</option><option value="price_asc">Сначала дешевле</option>
-          <option value="price_desc">Сначала дороже</option><option value="name">По названию</option>
+          <option value="">${t('cat.sortPop')}</option><option value="price_asc">${t('cat.sortCheap')}</option>
+          <option value="price_desc">${t('cat.sortExp')}</option><option value="name">${t('cat.sortName')}</option>
         </select>
       </div>
     </div>
@@ -232,12 +241,13 @@ async function viewCatalog(category = '') {
     if (category) qs.set('category', category);
     if ($('#q').value.trim()) qs.set('q', $('#q').value.trim());
     if ($('#sort').value) qs.set('sort', $('#sort').value);
+    if (LANG !== 'ru') qs.set('lang', LANG);
     const { products } = await api('GET', '/api/products?' + qs);
-    $('#grid').innerHTML = products.map(productCard).join('') || '<div class="empty" style="grid-column:1/-1"><div class="big">Ничего не найдено</div>Попробуйте изменить запрос</div>';
+    $('#grid').innerHTML = products.map(productCard).join('') || `<div class="empty" style="grid-column:1/-1"><div class="big">${t('cat.nothing')}</div>${t('cat.tryOther')}</div>`;
     bindAddButtons(products);
   };
-  let t;
-  $('#q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
+  let timer;
+  $('#q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 250); });
   $('#sort').addEventListener('change', load);
   await load();
 }
@@ -247,32 +257,32 @@ async function viewProduct(id) {
   const step = stepFor(p.unit);
   const imgs = p.images;
   app.innerHTML = `
-    <p><a href="#/catalog/${p.category}" class="muted">← ${esc(p.category_name)}</a></p>
+    <p><a href="#/catalog/${p.category}" class="muted">← ${esc(catName(p.category))}</a></p>
     <div class="product-page">
       <div>
-        <div class="gallery-main" id="mainImg">${imgs.length ? `<img src="${esc(imgs[0].url)}" alt="${esc(p.name)}">` : productArt(p.category, p.category_name.toUpperCase())}</div>
+        <div class="gallery-main" id="mainImg">${imgs.length ? `<img src="${esc(imgs[0].url)}" alt="${esc(pName(p))}">` : productArt(p.category, catName(p.category).toUpperCase())}</div>
         ${imgs.length > 1 ? `<div class="thumbs">${imgs.map((im, i) => `<img src="${esc(im.url)}" data-i="${i}" class="${i === 0 ? 'active' : ''}" alt="">`).join('')}</div>` : ''}
       </div>
       <div>
-        <div class="card-cat">${esc(p.category_name)}</div>
-        <h1>${esc(p.name)}</h1>
-        <div class="price" style="font-size:34px;margin:10px 0 16px">${zl(p.price)} <small>/ ${esc(p.unit)}</small></div>
-        <p style="white-space:pre-line">${esc(p.description)}</p>
+        <div class="card-cat">${esc(catName(p.category))}</div>
+        <h1>${esc(pName(p))}</h1>
+        <div class="price" style="font-size:34px;margin:10px 0 16px">${zl(p.price)} <small>/ ${esc(unitName(p.unit))}</small></div>
+        <p style="white-space:pre-line">${esc(pDesc(p))}</p>
         <dl class="kv" style="margin:18px 0">
-          <dt>Артикул</dt><dd>${esc(p.sku || '—')}</dd>
-          <dt>Наличие</dt><dd>${p.in_stock ? '<span class="st ok">В наличии</span>' : '<span class="st out">Нет в наличии</span>'}</dd>
-          ${p.unit === 'кг' ? '<dt>Шаг заказа</dt><dd>0,5 кг (точный вес уточняет менеджер)</dd>' : ''}
+          <dt>${t('p.sku')}</dt><dd>${esc(p.sku || '—')}</dd>
+          <dt>${t('p.availability')}</dt><dd>${p.in_stock ? `<span class="st ok">${t('p.inStock')}</span>` : `<span class="st out">${t('p.outOfStock')}</span>`}</dd>
+          ${p.unit === 'кг' ? `<dt>${t('p.step')}</dt><dd>${t('p.stepKg')}</dd>` : ''}
         </dl>
         ${p.in_stock ? `<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
           <div class="qty"><button id="minus">−</button><input id="qty" value="${step}" inputmode="decimal"><button id="plus">+</button></div>
-          <button class="btn primary" id="buy">В корзину</button>
+          <button class="btn primary" id="buy">${t('card.toCart')}</button>
         </div>` : ''}
-        ${can('products.edit') ? `<p style="margin-top:22px"><a class="btn sm ghost" href="#/admin/products" data-edit="${p.id}">✎ Редактировать товар</a></p>` : ''}
+        ${can('products.edit') ? `<p style="margin-top:22px"><a class="btn sm ghost" href="#/admin/products" data-edit="${p.id}">${t('p.edit')}</a></p>` : ''}
       </div>
     </div>`;
-  $$('.thumbs img').forEach((t) => t.addEventListener('click', () => {
-    $('#mainImg').innerHTML = `<img src="${esc(imgs[t.dataset.i].url)}" alt="">`;
-    $$('.thumbs img').forEach((x) => x.classList.toggle('active', x === t));
+  $$('.thumbs img').forEach((th) => th.addEventListener('click', () => {
+    $('#mainImg').innerHTML = `<img src="${esc(imgs[th.dataset.i].url)}" alt="">`;
+    $$('.thumbs img').forEach((x) => x.classList.toggle('active', x === th));
   }));
   if (p.in_stock) {
     const q = $('#qty');
@@ -286,65 +296,59 @@ async function viewProduct(id) {
 }
 
 function viewDelivery() {
-  app.innerHTML = `<h1>Доставка и оплата</h1>
+  app.innerHTML = `<h1>${t('del.title')}</h1>
   <div class="two-col">
     <div class="panel glow">
-      <h3>Доставка по Варшаве</h3>
-      <p class="muted">Курьер привезёт заказ в день оформления при заказе до 16:00. Менеджер позвонит для подтверждения состава и времени.</p>
-      <h3 style="margin-top:20px">Самовывоз</h3>
-      <p class="muted">Забрать заказ можно по договорённости с менеджером.</p>
-      <h3 style="margin-top:20px">Весовой товар</h3>
-      <p class="muted">Рыба на развес продаётся с шагом 0,5 кг. Итоговая сумма может немного отличаться после взвешивания.</p>
+      <h3>${t('del.city')}</h3><p class="muted">${t('del.cityText')}</p>
+      <h3 style="margin-top:20px">${t('del.pickup')}</h3><p class="muted">${t('del.pickupText')}</p>
+      <h3 style="margin-top:20px">${t('del.weight')}</h3><p class="muted">${t('del.weightText')}</p>
     </div>
     <div class="panel">
-      <h3>Оплата</h3>
-      <p class="muted">Наличными или картой курьеру, BLIK, переводом на счёт.</p>
-      <h3 style="margin-top:20px">Хранение</h3>
-      <p class="muted">Копчёную рыбу и икру храните в холодильнике при +2…+6 °C. Вяленую и сушёную — в сухом прохладном месте.</p>
+      <h3>${t('del.pay')}</h3><p class="muted">${t('del.payText')}</p>
+      <h3 style="margin-top:20px">${t('del.store')}</h3><p class="muted">${t('del.storeText')}</p>
     </div>
   </div>`;
 }
 
 /* ---------------- Корзина и оформление ---------------- */
+const consentBox = () => `<label class="check consent"><input type="checkbox" name="consent" required> <span>${t('consent')}</span></label>`;
 function cartTotal() { return state.cart.reduce((s, i) => s + i.price * i.qty, 0); }
 function viewCart() {
   if (!state.cart.length) {
-    app.innerHTML = `<div class="empty"><div class="big">Корзина пуста</div><p>Загляните в каталог — там много вкусного.</p><a href="#/catalog" class="btn primary">В каталог</a></div>`;
+    app.innerHTML = `<div class="empty"><div class="big">${t('cart.empty')}</div><p>${t('cart.emptyText')}</p><a href="#/catalog" class="btn primary">${t('cart.toCatalog')}</a></div>`;
     return;
   }
   const me = state.me || {};
-  app.innerHTML = `<h1>Корзина</h1>
+  app.innerHTML = `<h1>${t('cart.title')}</h1>
   <div class="two-col">
-    <div class="panel">
-      <div id="cartRows"></div>
-    </div>
+    <div class="panel"><div id="cartRows"></div></div>
     <form class="panel glow form" id="checkout">
-      <h3>Оформление заказа</h3>
-      <label class="field">Имя<input class="input" name="customer_name" required value="${esc(me.name || '')}"></label>
+      <h3>${t('cart.checkout')}</h3>
+      <label class="field">${t('f.name')}<input class="input" name="customer_name" required autocomplete="name" value="${esc(me.name || '')}"></label>
       <div class="form-row">
-        <label class="field">Телефон<input class="input" name="phone" required placeholder="+48 …" value="${esc(me.phone || '')}"></label>
-        <label class="field">E-mail<input class="input" name="email" type="email" value="${esc(me.email || '')}"></label>
+        <label class="field">${t('f.phone')}<input class="input" name="phone" required autocomplete="tel" placeholder="+48 …" value="${esc(me.phone || '')}"></label>
+        <label class="field">${t('f.email')}<input class="input" name="email" type="email" autocomplete="email" value="${esc(me.email || '')}"></label>
       </div>
       <div class="radio-cards">
-        <label><input type="radio" name="delivery" value="courier" checked> Курьер по Варшаве</label>
-        <label><input type="radio" name="delivery" value="pickup"> Самовывоз</label>
+        <label><input type="radio" name="delivery" value="courier" checked> ${t('cart.courier')}</label>
+        <label><input type="radio" name="delivery" value="pickup"> ${t('cart.pickup')}</label>
       </div>
-      <label class="field" id="addrField">Адрес доставки<input class="input" name="address" placeholder="ул., дом, кв."></label>
-      <label class="field">Комментарий<textarea class="input" name="comment" placeholder="Удобное время, домофон…"></textarea></label>
-      <div class="total-line big"><span>Итого</span><b id="total"></b></div>
-      <label class="check consent"><input type="checkbox" name="consent" required> <span>Я принимаю <a href="#/terms" target="_blank">правила магазина</a> и <a href="#/privacy" target="_blank">политику конфиденциальности</a></span></label>
-      <button class="btn primary" type="submit">Оформить заказ</button>
-      ${state.me ? '' : '<p class="muted" style="margin:0;font-size:13px"><a href="#/login" style="color:var(--gold-2)">Войдите</a>, чтобы видеть историю заказов.</p>'}
+      <label class="field" id="addrField">${t('cart.address')}<input class="input" name="address" autocomplete="street-address" placeholder="${esc(t('cart.addressPh'))}"></label>
+      <label class="field">${t('cart.comment')}<textarea class="input" name="comment" placeholder="${esc(t('cart.commentPh'))}"></textarea></label>
+      <div class="total-line big"><span>${t('cart.total')}</span><b id="total"></b></div>
+      ${consentBox()}
+      <button class="btn primary" type="submit">${t('cart.order')}</button>
+      ${state.me ? '' : `<p class="muted" style="margin:0;font-size:13px">${t('cart.loginHint')}</p>`}
     </form>
   </div>`;
   const renderRows = () => {
     $('#cartRows').innerHTML = state.cart.map((i, idx) => `
       <div class="cart-row">
         <div class="thumb">${productImage(i)}</div>
-        <div><a href="#/product/${i.id}"><b>${esc(i.name)}</b></a><div class="muted">${zl(i.price)} / ${esc(i.unit)}</div></div>
+        <div><a href="#/product/${i.id}"><b>${esc(pName(i))}</b></a><div class="muted">${zl(i.price)} / ${esc(unitName(i.unit))}</div></div>
         <div class="qty row-qty"><button data-dec="${idx}">−</button><input value="${fmtQty(i.qty)}" readonly><button data-inc="${idx}">+</button></div>
         <div class="price" style="font-size:18px">${zl(Math.round(i.price * i.qty * 100) / 100)}</div>
-        <button class="btn-icon" data-del="${idx}" title="Удалить">✕</button>
+        <button class="btn-icon" data-del="${idx}" title="${esc(t('cart.remove'))}" aria-label="${esc(t('cart.remove'))}">✕</button>
       </div>`).join('');
     $('#total').textContent = zl(Math.round(cartTotal() * 100) / 100);
     $$('[data-inc]').forEach((b) => b.onclick = () => { const i = state.cart[b.dataset.inc]; i.qty += stepFor(i.unit); saveCart(); renderRows(); });
@@ -358,11 +362,11 @@ function viewCart() {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(form));
     try {
-      const { order } = await api('POST', '/api/orders', { ...fd, consent: form.consent.checked, items: state.cart.map((i) => ({ product_id: i.id, qty: i.qty })) });
+      const { order } = await api('POST', '/api/orders', { ...fd, lang: LANG, consent: form.consent.checked, items: state.cart.map((i) => ({ product_id: i.id, qty: i.qty })) });
       state.cart = []; saveCart();
-      app.innerHTML = `<div class="empty"><div class="big">Спасибо! Заказ №${order.id} принят</div>
-        <p>Сумма: <b style="color:var(--gold-2)">${zl(order.total)}</b>. Менеджер свяжется с вами по телефону ${esc(order.phone)}.</p>
-        <a href="#/catalog" class="btn">Продолжить покупки</a></div>`;
+      app.innerHTML = `<div class="empty"><div class="big">${t('cart.thanks', { id: order.id })}</div>
+        <p>${t('cart.thanksText', { sum: zl(order.total), phone: esc(order.phone) })}</p>
+        <a href="#/catalog" class="btn">${t('cart.continue')}</a></div>`;
     } catch (err) { toast(err.message, true); }
   });
 }
@@ -372,14 +376,14 @@ function viewAuth(mode) {
   if (state.me) { location.hash = '#/account'; return; }
   const reg = mode === 'register';
   app.innerHTML = `<div class="auth-box panel glow">
-    <div class="tabs"><a class="chip ${reg ? '' : 'active'}" href="#/login">Вход</a><a class="chip ${reg ? 'active' : ''}" href="#/register">Регистрация</a></div>
+    <div class="tabs"><a class="chip ${reg ? '' : 'active'}" href="#/login">${t('auth.login')}</a><a class="chip ${reg ? 'active' : ''}" href="#/register">${t('auth.register')}</a></div>
     <form class="form" id="authForm">
-      ${reg ? '<label class="field">Имя<input class="input" name="name" required autocomplete="name"></label>' : ''}
-      <label class="field">E-mail<input class="input" name="email" type="email" required autocomplete="email"></label>
-      ${reg ? '<label class="field">Телефон<input class="input" name="phone" autocomplete="tel" placeholder="+48 …"></label>' : ''}
-      <label class="field">Пароль<input class="input" name="password" type="password" required minlength="${reg ? 8 : 1}" autocomplete="${reg ? 'new-password' : 'current-password'}"></label>
-      ${reg ? '<label class="check consent"><input type="checkbox" name="consent" required> <span>Я принимаю <a href="#/terms" target="_blank">правила магазина</a> и <a href="#/privacy" target="_blank">политику конфиденциальности</a></span></label>' : ''}
-      <button class="btn primary" type="submit">${reg ? 'Создать аккаунт' : 'Войти'}</button>
+      ${reg ? `<label class="field">${t('f.name')}<input class="input" name="name" required autocomplete="name"></label>` : ''}
+      <label class="field">${t('f.email')}<input class="input" name="email" type="email" required autocomplete="email"></label>
+      ${reg ? `<label class="field">${t('f.phone')}<input class="input" name="phone" autocomplete="tel" placeholder="+48 …"></label>` : ''}
+      <label class="field">${t('f.password')}<input class="input" name="password" type="password" required minlength="${reg ? 8 : 1}" autocomplete="${reg ? 'new-password' : 'current-password'}"></label>
+      ${reg ? consentBox() : ''}
+      <button class="btn primary" type="submit">${reg ? t('auth.create') : t('auth.enter')}</button>
     </form>
   </div>`;
   $('#authForm').addEventListener('submit', async (e) => {
@@ -389,7 +393,7 @@ function viewAuth(mode) {
       if (reg) fd.consent = e.target.consent.checked;
       const { user } = await api('POST', reg ? '/api/auth/register' : '/api/auth/login', fd);
       state.me = user; updateHeader();
-      toast(`Добро пожаловать, ${user.name}!`);
+      toast(t('auth.welcome', { name: user.name }));
       location.hash = user.role === 'customer' ? '#/account' : '#/admin';
     } catch (err) { toast(err.message, true); }
   });
@@ -399,45 +403,44 @@ async function viewAccount() {
   if (!state.me) { location.hash = '#/login'; return; }
   const { orders } = await api('GET', '/api/orders/my');
   const me = state.me;
-  app.innerHTML = `<h1>Личный кабинет</h1>
+  app.innerHTML = `<h1>${t('acc.title')}</h1>
   <div class="two-col">
     <div>
-      <h3>Мои заказы</h3>
-      ${orders.length ? orders.map(orderCard).join('') : '<div class="panel empty">Заказов пока нет</div>'}
+      <h3>${t('acc.orders')}</h3>
+      ${orders.length ? orders.map((o) => orderCard(o)).join('') : `<div class="panel empty">${t('acc.noOrders')}</div>`}
     </div>
     <div class="panel glow">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <h3 style="margin:0">${esc(me.name)}</h3><span class="role-pill role-${me.role}">${roleName(me.role)}</span>
+        <h3 style="margin:0">${esc(me.name)}</h3><span class="role-pill role-${me.role}">${t('role.' + me.role)}</span>
       </div>
       <p class="muted">${esc(me.email)}</p>
-      ${isStaff() ? '<p><a href="#/admin" class="btn primary">Панель управления</a></p>' : ''}
+      ${isStaff() ? `<p><a href="#/admin" class="btn primary">${t('acc.admin')}</a></p>` : ''}
       <form class="form" id="profile">
-        <label class="field">Имя<input class="input" name="name" value="${esc(me.name)}"></label>
-        <label class="field">Телефон<input class="input" name="phone" value="${esc(me.phone || '')}"></label>
-        <label class="field">Текущий пароль<input class="input" name="old_password" type="password" autocomplete="current-password"></label>
-        <label class="field">Новый пароль<input class="input" name="new_password" type="password" minlength="8" autocomplete="new-password"></label>
-        <button class="btn" type="submit">Сохранить</button>
+        <label class="field">${t('f.name')}<input class="input" name="name" value="${esc(me.name)}" autocomplete="name"></label>
+        <label class="field">${t('f.phone')}<input class="input" name="phone" value="${esc(me.phone || '')}" autocomplete="tel"></label>
+        <label class="field">${t('acc.oldPw')}<input class="input" name="old_password" type="password" autocomplete="current-password"></label>
+        <label class="field">${t('acc.newPw')}<input class="input" name="new_password" type="password" minlength="8" autocomplete="new-password"></label>
+        <button class="btn" type="submit">${t('common.save')}</button>
       </form>
-      <button class="btn danger" id="logout" style="margin-top:14px;width:100%">Выйти</button>
-      ${me.role === 'customer' ? '<button class="btn sm ghost" id="delAcc" style="margin-top:10px;width:100%">Удалить аккаунт и мои данные</button>' : ''}
+      <button class="btn danger" id="logout" style="margin-top:14px;width:100%">${t('acc.logout')}</button>
+      ${me.role === 'customer' ? `<button class="btn sm ghost" id="delAcc" style="margin-top:10px;width:100%">${t('acc.delete')}</button>` : ''}
     </div>
   </div>`;
   $('#profile').addEventListener('submit', async (e) => {
     e.preventDefault();
-    try { const { user } = await api('PUT', '/api/me', Object.fromEntries(new FormData(e.target))); state.me = user; toast('Сохранено'); viewAccount(); }
+    try { const { user } = await api('PUT', '/api/me', Object.fromEntries(new FormData(e.target))); state.me = user; toast(t('common.saved')); viewAccount(); }
     catch (err) { toast(err.message, true); }
   });
   $('#logout').addEventListener('click', logout);
-  $('#delAcc')?.addEventListener('click', () => openModal(`<h2>Удаление аккаунта</h2>
-    <p>Аккаунт и личные данные профиля будут удалены безвозвратно. Данные уже оформленных заказов мы обязаны хранить для бухгалтерии
-    (см. <a href="#/privacy" style="color:var(--gold-2)">политику конфиденциальности</a>), но они больше не будут связаны с аккаунтом.</p>
-    <form class="form" id="delForm"><label class="field">Пароль для подтверждения<input class="input" name="password" type="password" required autocomplete="current-password"></label>
-    <div style="display:flex;gap:10px;justify-content:flex-end"><button type="button" class="btn ghost" data-close>Отмена</button><button class="btn danger">Удалить навсегда</button></div></form>`, (root) => {
+  $('#delAcc')?.addEventListener('click', () => openModal(`<h2>${t('acc.delTitle')}</h2>
+    <p>${t('acc.delText')}</p>
+    <form class="form" id="delForm"><label class="field">${t('acc.delPw')}<input class="input" name="password" type="password" required autocomplete="current-password"></label>
+    <div style="display:flex;gap:10px;justify-content:flex-end"><button type="button" class="btn ghost" data-close>${t('common.cancel')}</button><button class="btn danger">${t('acc.delBtn')}</button></div></form>`, (root) => {
     $('#delForm', root).addEventListener('submit', async (e) => {
       e.preventDefault();
       try {
         await api('POST', '/api/me/delete', { password: e.target.password.value });
-        closeModal(); state.me = null; updateHeader(); location.hash = '#/'; toast('Аккаунт удалён');
+        closeModal(); state.me = null; updateHeader(); location.hash = '#/'; toast(t('acc.deleted'));
       } catch (err) { toast(err.message, true); }
     });
   }));
@@ -445,18 +448,21 @@ async function viewAccount() {
 async function logout() {
   await api('POST', '/api/auth/logout', {});
   state.me = null; updateHeader(); location.hash = '#/';
-  toast('Вы вышли из аккаунта');
+  toast(t('acc.loggedOut'));
 }
+// Роли в админке всегда по-русски
 const roleName = (r) => ({ admin: 'Администратор', manager: 'Менеджер', customer: 'Покупатель' }[r] || r);
+// manage = true — карточка заказа в админке (по-русски), иначе — в кабинете покупателя (на языке сайта)
 function orderCard(o, manage = false) {
+  const tt = (key, vars) => (manage ? I18N.ru[key].replace(/\{(\w+)\}/g, (_, k) => vars?.[k] ?? '') : t(key, vars));
   return `<div class="panel order-card">
     <div class="order-head">
-      <div><b style="font:600 18px var(--head)">Заказ №${o.id}</b> <span class="muted">· ${fmtDate(o.created_at)}</span></div>
-      ${manage ? `<select class="input" data-status="${o.id}" style="width:auto" ${o.status === 'cancelled' ? 'disabled' : ''}>${Object.entries(state.meta.order_statuses).map(([k, v]) => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${v}</option>`).join('')}</select>` : `<span class="st st-${o.status}">${esc(o.status_name)}</span>`}
+      <div><b style="font:600 18px var(--head)">${tt('order.n', { id: o.id })}</b> <span class="muted">· ${fmtDate(o.created_at)}</span></div>
+      ${manage ? `<select class="input" data-status="${o.id}" style="width:auto" ${o.status === 'cancelled' ? 'disabled' : ''}>${Object.entries(state.meta.order_statuses).map(([k, v]) => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${v}</option>`).join('')}</select>` : `<span class="st st-${o.status}">${esc(statusName(o.status))}</span>`}
     </div>
-    ${manage ? `<div class="muted" style="font-size:14px">${esc(o.customer_name)} · <a href="tel:${esc(o.phone)}" style="color:var(--gold-2)">${esc(o.phone)}</a>${o.email ? ' · ' + esc(o.email) : ''}<br>${o.delivery === 'pickup' ? 'Самовывоз' : 'Курьер: ' + esc(o.address)}${o.comment ? `<br>💬 ${esc(o.comment)}` : ''}</div>` : ''}
-    <ul class="order-items">${o.items.map((i) => `<li>${esc(i.name)} — ${fmtQty(i.qty)} ${esc(i.unit)} × ${zl(i.price)}</li>`).join('')}</ul>
-    <div class="total-line"><span class="muted">Сумма</span><b class="price" style="font-size:20px">${zl(o.total)}</b></div>
+    ${manage ? `<div class="muted" style="font-size:14px">${esc(o.customer_name)} · <a href="tel:${esc(o.phone)}" style="color:var(--gold-2)">${esc(o.phone)}</a>${o.email ? ' · ' + esc(o.email) : ''}${o.lang === 'pl' ? ' · 🇵🇱 PL' : ''}<br>${o.delivery === 'pickup' ? 'Самовывоз' : 'Курьер: ' + esc(o.address)}${o.comment ? `<br>💬 ${esc(o.comment)}` : ''}</div>` : ''}
+    <ul class="order-items">${o.items.map((i) => `<li>${esc(manage ? i.name : (LANG === 'pl' && i.name_pl) || i.name)} — ${fmtQty(i.qty)} ${esc(manage ? i.unit : unitName(i.unit))} × ${zl(i.price)}</li>`).join('')}</ul>
+    <div class="total-line"><span class="muted">${tt('order.sum')}</span><b class="price" style="font-size:20px">${zl(o.total)}</b></div>
   </div>`;
 }
 
@@ -545,17 +551,21 @@ async function adminProducts(main) {
 const refreshAdmin = () => { if (location.hash.startsWith('#/admin')) router(); };
 
 async function editProduct(id) {
-  const p = id ? (await api('GET', `/api/products/${id}`)).product : { name: '', sku: '', category: 'smoked', description: '', price: 0, cost: 0, unit: 'кг', min_stock: 0, active: true, featured: false, badge: '', images: [] };
+  const p = id ? (await api('GET', `/api/products/${id}`)).product : { name: '', sku: '', category: 'smoked', description: '', name_pl: '', description_pl: '', price: 0, cost: 0, unit: 'кг', min_stock: 0, active: true, featured: false, badge: '', images: [] };
   const priceLock = !can('products.price');
   const m = state.meta;
   openModal(`<h2>${id ? 'Редактирование товара' : 'Новый товар'}</h2>
     <form class="form" id="pform">
-      <label class="field">Название<input class="input" name="name" required value="${esc(p.name)}"></label>
+      <div class="form-row">
+        <label class="field">Название 🇷🇺<input class="input" name="name" required value="${esc(p.name)}"></label>
+        <label class="field">Название 🇵🇱 (Nazwa)<input class="input" name="name_pl" placeholder="если пусто — покажем русское" value="${esc(p.name_pl || '')}"></label>
+      </div>
       <div class="form-row">
         <label class="field">Категория<select class="input" name="category">${Object.entries(m.categories).map(([k, v]) => `<option value="${k}" ${k === p.category ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
         <label class="field">Артикул<input class="input" name="sku" value="${esc(p.sku)}"></label>
       </div>
-      <label class="field">Описание<textarea class="input" name="description">${esc(p.description)}</textarea></label>
+      <label class="field">Описание 🇷🇺<textarea class="input" name="description">${esc(p.description)}</textarea></label>
+      <label class="field">Описание 🇵🇱 (Opis)<textarea class="input" name="description_pl" placeholder="если пусто — покажем русское">${esc(p.description_pl || '')}</textarea></label>
       <div class="form-row">
         <label class="field">Цена продажи, zł${priceLock ? ' 🔒' : ''}<input class="input" name="price" type="number" step="0.01" min="0" value="${p.price}" ${priceLock ? 'disabled' : ''}></label>
         ${'cost' in p || !id ? `<label class="field">Себестоимость, zł${priceLock ? ' 🔒' : ''}<input class="input" name="cost" type="number" step="0.01" min="0" value="${p.cost ?? 0}" ${priceLock ? 'disabled' : ''}></label>` : '<div></div>'}
@@ -587,6 +597,7 @@ async function editProduct(id) {
       const f = e.target;
       const body = {
         name: f.name.value, sku: f.sku.value, category: f.category.value, description: f.description.value,
+        name_pl: f.name_pl.value, description_pl: f.description_pl.value,
         unit: f.unit.value, min_stock: f.min_stock.value || 0, badge: f.badge.value,
         active: f.active.checked, featured: f.featured.checked,
       };
@@ -885,13 +896,14 @@ async function adminSheets(main) {
 
 /* ---------------- Запуск ---------------- */
 (async function init() {
+  applyStaticI18n();
   $('#year').textContent = new Date().getFullYear();
   saveCart();
   try {
     const [meta, me] = await Promise.all([api('GET', '/api/meta'), api('GET', '/api/me')]);
     state.meta = meta; state.me = me.user;
   } catch (e) {
-    app.innerHTML = `<div class="empty"><div class="big">Сервер недоступен</div>${esc(e.message)}</div>`;
+    app.innerHTML = `<div class="empty"><div class="big">${t('common.serverDown')}</div>${esc(e.message)}</div>`;
     return;
   }
   updateHeader();

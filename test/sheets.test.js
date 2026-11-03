@@ -212,6 +212,32 @@ test('сбой после проведения не приводит к дубл
   assert.ok(Number(M.cell(r, 10)) > 0);
 });
 
+test('польские колонки синхронизируются в обе стороны', async () => {
+  const P = book['Товары'];
+  const r = row('Товары', 'SF-001');
+  assert.equal(P.cell(1, 16), 'Название (PL)');
+  assert.equal(P.cell(r, 16), 'Makrela wędzona na gorąco', 'сайт → таблица');
+  P.set(r, 17, 'Opis z arkusza');
+  await sheets.syncNow();
+  assert.equal(db.prepare('SELECT description_pl FROM products WHERE sku = ?').get('SF-001').description_pl, 'Opis z arkusza', 'таблица → сайт');
+});
+
+test('пустые польские колонки (старая таблица) не затирают польский текст сайта', async () => {
+  const P = book['Товары'];
+  const r = row('Товары', 'SF-002');
+  const before = db.prepare('SELECT name_pl FROM products WHERE sku = ?').get('SF-002').name_pl;
+  assert.ok(before);
+  // как будто колонок P/Q ещё не было, а цену при этом поменяли в таблице
+  P.set(r, 16, ''); P.set(r, 17, ''); P.set(r, 5, 44);
+  await sheets.syncNow();
+  const p = db.prepare('SELECT * FROM products WHERE sku = ?').get('SF-002');
+  assert.equal(p.price, 4400, 'цена из таблицы применилась');
+  assert.equal(p.name_pl, before, 'польское название сохранилось');
+  assert.equal(P.cell(r, 16), before, 'и вернулось в таблицу');
+  await sheets.syncNow();
+  assert.equal(P.cell(r, 16), before, 'стабильно');
+});
+
 test('удалённый на сайте товар не возвращается из таблицы', async () => {
   const id = db.prepare('SELECT id FROM products WHERE sku = ?').get('SF-100').id;
   assert.equal((await api('DELETE', `/api/products/${id}`)).status, 200);

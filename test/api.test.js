@@ -249,3 +249,25 @@ test('CSV экранирует формулы Excel', async () => {
   const csv = (await admin('GET', '/api/inventory.csv')).data;
   assert.match(csv, /"'=HYPERLINK/);
 });
+
+/* ---------------- Два языка ---------------- */
+test('товары отдают польские поля, поиск находит по-польски', async () => {
+  const p = (await guest('GET', '/api/products/1')).data.product;
+  assert.equal(p.name_pl, 'Makrela wędzona na gorąco');
+  assert.ok(p.description_pl.length > 10);
+  const found = (await guest('GET', '/api/products?q=Makrela')).data.products;
+  assert.deepEqual(found.map((x) => x.id), [1]);
+  // сортировка по польскому названию: «Ciosa» раньше «Makrela», хотя по-русски «Скумбрия» раньше «Чехонь»
+  const names = (await guest('GET', '/api/products?sort=name&lang=pl')).data.products.map((x) => x.name_pl);
+  assert.ok(names.indexOf('Ciosa suszona') < names.indexOf('Makrela wędzona na gorąco'));
+});
+
+test('админ редактирует польские поля, заказ помнит язык', async () => {
+  const r = await admin('PUT', '/api/products/3', { name_pl: 'Leszcz wędzony (test)', description_pl: 'Opis PL' });
+  assert.equal(r.data.product.name_pl, 'Leszcz wędzony (test)');
+  const o = await guest('POST', '/api/orders', { customer_name: 'Jan', phone: '+48600100300', delivery: 'pickup', lang: 'pl', consent: true, items: [{ product_id: 3, qty: 1 }] });
+  assert.equal(o.status, 200, JSON.stringify(o.data));
+  assert.equal(o.data.order.lang, 'pl');
+  assert.equal(o.data.order.items[0].name_pl, 'Leszcz wędzony (test)');
+  assert.equal(o.data.order.items[0].name, 'Лещ горячего копчения', 'для склада остаётся русское название');
+});

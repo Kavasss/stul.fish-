@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SHUL.FISH — копчёная, вяленая рыба и икра в Варшаве</title>
   <link rel="canonical" href="https://shulfish.pl/">
+  <link rel="alternate" hreflang="ru" href="https://shulfish.pl/?lang=ru">
+  <link rel="alternate" hreflang="pl" href="https://shulfish.pl/?lang=pl">
+  <link rel="alternate" hreflang="x-default" href="https://shulfish.pl/">
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:locale:alternate" content="pl_PL">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://shulfish.pl/">
   <meta property="og:title" content="SHUL.FISH — рыба и икра в Варшаве">
@@ -27,23 +32,24 @@
       <span class="brand-name">SHUL<span class="dot">.</span>FISH</span>
     </a>
     <nav class="nav" id="nav">
-      <a href="#/catalog" data-nav="catalog">Каталог</a>
-      <a href="#/catalog/smoked" data-nav="smoked">Копчёная</a>
-      <a href="#/catalog/cured" data-nav="cured">Вяленая</a>
-      <a href="#/catalog/dried" data-nav="dried">Сушёная</a>
-      <a href="#/catalog/caviar" data-nav="caviar">Икра</a>
-      <a href="#/delivery" data-nav="delivery">Доставка</a>
+      <a href="#/catalog" data-nav="catalog" data-i18n="nav.catalog">Каталог</a>
+      <a href="#/catalog/smoked" data-nav="smoked" data-i18n="nav.smoked">Копчёная</a>
+      <a href="#/catalog/cured" data-nav="cured" data-i18n="nav.cured">Вяленая</a>
+      <a href="#/catalog/dried" data-nav="dried" data-i18n="nav.dried">Сушёная</a>
+      <a href="#/catalog/caviar" data-nav="caviar" data-i18n="nav.caviar">Икра</a>
+      <a href="#/delivery" data-nav="delivery" data-i18n="nav.delivery">Доставка</a>
     </nav>
     <div class="actions">
-      <a href="#/admin" class="btn-icon staff-only hidden" id="adminLink" title="Панель управления">⚙</a>
-      <a href="#/account" class="btn-icon" id="accountLink" title="Личный кабинет">
+      <button class="btn-icon lang-btn" id="langBtn" type="button">PL</button>
+      <a href="#/admin" class="btn-icon staff-only hidden" id="adminLink" data-i18n-title="nav.admin" title="Панель управления">⚙</a>
+      <a href="#/account" class="btn-icon" id="accountLink" data-i18n-title="nav.account" title="Личный кабинет">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
       </a>
-      <a href="#/cart" class="btn-icon cart-btn" title="Корзина">
+      <a href="#/cart" class="btn-icon cart-btn" data-i18n-title="nav.cart" title="Корзина">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"/><circle cx="10" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>
         <span class="cart-count" id="cartCount">0</span>
       </a>
-      <button class="btn-icon burger" id="burger" aria-label="Меню">☰</button>
+      <button class="btn-icon burger" id="burger" data-i18n-title="nav.menu" aria-label="Меню">☰</button>
     </div>
   </header>
 
@@ -53,19 +59,19 @@
     <div class="footer-inner">
       <div>
         <div class="brand-name small">SHUL<span class="dot">.</span>FISH</div>
-        <p class="muted">Копчёная, вяленая, сушёная рыба и икра. Premium quality.</p>
+        <p class="muted" data-i18n="foot.tagline">Копчёная, вяленая, сушёная рыба и икра. Premium quality.</p>
       </div>
       <div>
-        <div class="footer-title">Доставка</div>
-        <p class="muted">По Варшаве — курьером в день заказа.<br>Самовывоз — по договорённости.</p>
+        <div class="footer-title" data-i18n="foot.delivery">Доставка</div>
+        <p class="muted" data-i18n="foot.deliveryText">По Варшаве — курьером в день заказа.<br>Самовывоз — по договорённости.</p>
       </div>
       <div>
-        <div class="footer-title">Контакты</div>
-        <p class="muted">Warszawa, Polska<br>Пн–Вс 10:00–21:00</p>
+        <div class="footer-title" data-i18n="foot.contacts">Контакты</div>
+        <p class="muted" data-i18n="foot.contactsText">Warszawa, Polska<br>Пн–Вс 10:00–21:00</p>
       </div>
     </div>
     <div class="footer-bottom muted">© <span id="year"></span> SHUL.FISH · shulfish.pl · Warszawa
-      <nav class="legal-links"><a href="#/terms">Правила магазина</a><a href="#/privacy">Политика конфиденциальности</a><a href="#/cookies">Cookies</a></nav>
+      <nav class="legal-links"><a href="#/terms" data-i18n="legal.terms">Правила магазина</a><a href="#/privacy" data-i18n="legal.privacy">Политика конфиденциальности</a><a href="#/cookies" data-i18n="legal.cookies">Cookies</a></nav>
     </div>
   </footer>
 
@@ -73,11 +79,12 @@
   <div class="modal hidden" id="modal" role="dialog" aria-modal="true">
     <div class="modal-backdrop" data-close></div>
     <div class="modal-box">
-      <button class="modal-x" data-close aria-label="Закрыть">✕</button>
+      <button class="modal-x" data-close aria-label="✕">✕</button>
       <div id="modalBody"></div>
     </div>
   </div>
 
+  <script src="/js/i18n.js"></script>
   <script src="/js/legal.js"></script>
   <script src="/js/app.js"></script>
 </body>

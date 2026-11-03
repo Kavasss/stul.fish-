@@ -174,6 +174,10 @@ addColumn('orders', 'sheet_ver', 'INTEGER NOT NULL DEFAULT 1');
 addColumn('orders', 'sheet_pushed_ver', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('orders', 'consent_at', 'TEXT');
 addColumn('users', 'consent_at', 'TEXT');
+addColumn('products', 'name_pl', "TEXT NOT NULL DEFAULT ''");
+addColumn('products', 'description_pl', "TEXT NOT NULL DEFAULT ''");
+addColumn('orders', 'lang', "TEXT NOT NULL DEFAULT 'ru'");
+addColumn('order_items', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mov_sheet_key ON stock_movements(sheet_key) WHERE sheet_key IS NOT NULL;
 UPDATE stock_movements SET product_sku = COALESCE((SELECT sku FROM products WHERE products.id = stock_movements.product_id), '') WHERE product_sku = '';`);
 
@@ -302,6 +306,28 @@ for (const p of db.prepare("SELECT id, sku FROM products ORDER BY id").all()) {
 }
 db.exec(`UPDATE stock_movements SET product_sku = COALESCE((SELECT sku FROM products WHERE products.id = stock_movements.product_id), '') WHERE product_sku = ''`);
 
+const SEED_PL = {
+  'SF-001': ['Makrela wędzona na gorąco', 'Makrela atlantycka wędzona na zrębkach olchowych. Soczysta, ze złocistą skórką.'],
+  'SF-002': ['Łosoś wędzony na zimno', 'Filet z łososia norweskiego, lekko solony, wędzony na zimno. Plastry 200 g.'],
+  'SF-003': ['Leszcz wędzony na gorąco', 'Duży leszcz wędzony w całości. Zwarte mięso i intensywny aromat.'],
+  'SF-004': ['Omul wędzony', 'Bajkalska receptura: delikatne solenie i łagodny dym.'],
+  'SF-005': ['Wobła suszona', 'Klasyczna wobła z ikrą. Idealna do piwa.'],
+  'SF-006': ['Taranka suszona', 'Płoć azowska suszona naturalnie na świeżym powietrzu.'],
+  'SF-007': ['Ciosa suszona', 'Tłusta ciosa — cienka i przejrzysta pod światło.'],
+  'SF-008': ['Leszcz suszony', 'Duży suszony leszcz o bursztynowym mięsie.'],
+  'SF-009': ['Stynka suszona', 'Chrupiąca stynka o świeżym, ogórkowym aromacie.'],
+  'SF-010': ['Sardela suszona', 'Drobna sardela — przekąska, od której trudno się oderwać.'],
+  'SF-011': ['Kałamarnica suszona (wiórki)', 'Cienkie wiórki z kałamarnicy pacyficznej.'],
+  'SF-012': ['Ikra z gorbuszy (czerwona)', 'Ziarnista ikra z gorbuszy, 1. gatunek. Słoik 250 g.'],
+  'SF-013': ['Ikra z kety (czerwona)', 'Duże bursztynowe ziarno, łagodny smak. Słoik 250 g.'],
+  'SF-014': ['Kawior jesiotrowy (czarny)', 'Kawior z jesiotra z hodowli, lekko solony. Słoik 50 g.'],
+  'SF-015': ['Zestaw „Do piwa”', 'Wobła, stynka, kałamarnica i sardela — wszystko na wieczór z przyjaciółmi.'],
+  'SF-016': ['Zestaw prezentowy „Kawiorowy”', 'Czerwona ikra i czarny kawior w eleganckim opakowaniu prezentowym z kartką.'],
+};
+for (const [sku, [n, d]] of Object.entries(SEED_PL)) {
+  db.prepare("UPDATE products SET name_pl = ?, description_pl = ? WHERE sku = ? AND name_pl = '' AND description_pl = ''").run(n, d, sku);
+}
+
 // Предупреждение, если в старой базе остались известные пароли из первой версии
 const KNOWN_WEAK = ['admin12345', 'manager12345'];
 function weakStaffAccounts() {
@@ -405,7 +431,7 @@ function imagesFor(ids) {
 function shapeProduct(p, imgs, user) {
   const out = {
     id: p.id, sku: p.sku, name: p.name, category: p.category, category_name: CATEGORIES[p.category] || p.category,
-    description: p.description, price: p.price / 100, unit: p.unit,
+    description: p.description, name_pl: p.name_pl, description_pl: p.description_pl, price: p.price / 100, unit: p.unit,
     in_stock: p.stock > 0, featured: !!p.featured, badge: p.badge,
     images: imgs[p.id] || [],
   };
@@ -529,9 +555,10 @@ route('GET', '/api/products', ({ user, query }) => {
   const args = [];
   if (!staffView) where.push('active = 1');
   if (query.get('category') && CATEGORIES[query.get('category')]) { where.push('category = ?'); args.push(query.get('category')); }
-  if (query.get('q')) { where.push('(name LIKE ? OR description LIKE ? OR sku LIKE ?)'); const q = `%${query.get('q')}%`; args.push(q, q, q); }
+  if (query.get('q')) { where.push('(name LIKE ? OR description LIKE ? OR sku LIKE ? OR name_pl LIKE ? OR description_pl LIKE ?)'); const q = `%${query.get('q')}%`; args.push(q, q, q, q, q); }
   if (query.get('featured') === '1') where.push('featured = 1');
-  const sort = { price_asc: 'price ASC', price_desc: 'price DESC', name: 'name COLLATE NOCASE' }[query.get('sort')] || 'featured DESC, (stock > 0) DESC, id';
+  const byName = query.get('lang') === 'pl' ? "COALESCE(NULLIF(name_pl, ''), name) COLLATE NOCASE" : 'name COLLATE NOCASE';
+  const sort = { price_asc: 'price ASC', price_desc: 'price DESC', name: byName }[query.get('sort')] || 'featured DESC, (stock > 0) DESC, id';
   const rows = db.prepare(`SELECT * FROM products ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${sort}`).all(...args);
   const imgs = imagesFor(rows.map((r) => r.id));
   return { products: rows.map((r) => shapeProduct(r, imgs, user)) };
@@ -553,6 +580,8 @@ function productFields(body, user, existing) {
   }
   if ('category' in body) { if (!CATEGORIES[body.category]) throw new HttpError(400, 'Неизвестная категория'); f.category = body.category; }
   if ('description' in body) f.description = str(body.description, 3000);
+  if ('name_pl' in body) f.name_pl = str(body.name_pl, 120);
+  if ('description_pl' in body) f.description_pl = str(body.description_pl, 3000);
   if ('unit' in body) { if (!UNITS.includes(body.unit)) throw new HttpError(400, 'Неизвестная единица'); f.unit = body.unit; }
   if ('min_stock' in body) f.min_stock = round3(num(body.min_stock, { min: 0, max: 1e6, name: 'минимальный остаток' }));
   if ('active' in body) f.active = body.active ? 1 : 0;
@@ -767,8 +796,8 @@ route('POST', '/api/orders', ({ user, body, req }) => {
   const address = str(body.address, 300);
   if (delivery === 'courier' && !address) throw new HttpError(400, 'Укажите адрес доставки по Варшаве');
   const orderId = tx(() => {
-    const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,consent_at) VALUES (?,?,?,?,?,?,?,datetime('now'))")
-      .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000));
+    const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,lang,consent_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))")
+      .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000), body.lang === 'pl' ? 'pl' : 'ru');
     const oid = Number(r.lastInsertRowid);
     let total = 0;
     for (const it of items) {
@@ -779,7 +808,7 @@ route('POST', '/api/orders', ({ user, body, req }) => {
       const qty = round3(num(it.qty, { min: step, max: 1000, name: 'количество' }));
       if (Math.abs(qty / step - Math.round(qty / step)) > 1e-6) throw new HttpError(400, `Количество «${p.name}» должно быть кратно ${step}`);
       applyMovement(p, 'sale', -qty, `Заказ №${oid}`, user, oid);
-      db.prepare('INSERT INTO order_items (order_id,product_id,name,unit,price,qty) VALUES (?,?,?,?,?,?)').run(oid, p.id, p.name, p.unit, p.price, qty);
+      db.prepare('INSERT INTO order_items (order_id,product_id,name,name_pl,unit,price,qty) VALUES (?,?,?,?,?,?,?)').run(oid, p.id, p.name, p.name_pl || '', p.unit, p.price, qty);
       total += Math.round(p.price * qty);
     }
     db.prepare('UPDATE orders SET total = ? WHERE id = ?').run(total, oid);

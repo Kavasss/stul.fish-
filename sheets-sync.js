@@ -43,8 +43,8 @@ function createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement
   }
 
   /* ---------------- преобразования ---------------- */
-  const hashOf = (n) => crypto.createHash('sha1').update(JSON.stringify([n.name, n.category, n.unit, n.price, n.cost, n.min_stock, n.active, n.description])).digest('hex');
-  const siteNorm = (p) => ({ name: p.name, category: p.category, unit: p.unit, price: p.price, cost: p.cost, min_stock: p.min_stock, active: p.active ? 1 : 0, description: p.description });
+  const hashOf = (n) => crypto.createHash('sha1').update(JSON.stringify([n.name, n.category, n.unit, n.price, n.cost, n.min_stock, n.active, n.description, n.name_pl, n.description_pl])).digest('hex');
+  const siteNorm = (p) => ({ name: p.name, category: p.category, unit: p.unit, price: p.price, cost: p.cost, min_stock: p.min_stock, active: p.active ? 1 : 0, description: p.description, name_pl: p.name_pl || '', description_pl: p.description_pl || '' });
   function sheetNorm(r) {
     const category = CAT_BY_LABEL[String(r.category).toLowerCase()] || (CATEGORIES[r.category] ? r.category : null);
     if (!r.name) return { error: 'пустое название' };
@@ -57,11 +57,13 @@ function createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement
       min_stock: Math.max(0, Math.round((r.min_stock || 0) * 1000) / 1000),
       active: String(r.on_site).toLowerCase() === 'нет' ? 0 : 1,
       description: String(r.description || '').slice(0, 3000),
+      name_pl: String(r.name_pl || '').slice(0, 120), description_pl: String(r.description_pl || '').slice(0, 3000),
     };
   }
   const productPayload = (p) => ({
     sku: p.sku, name: p.name, category: CATEGORIES[p.category] || p.category, unit: p.unit,
     price: p.price / 100, cost: p.cost / 100, min_stock: p.min_stock, on_site: p.active ? 'Да' : 'Нет', description: p.description,
+    name_pl: p.name_pl || '', description_pl: p.description_pl || '',
   });
   const fmtQty = (n) => String(Math.round(n * 1000) / 1000).replace('.', ',');
   function orderPayload(o) {
@@ -90,14 +92,17 @@ function createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement
       }
       const h = hashOf(n);
       if (!p) {
-        const res = db.prepare(`INSERT INTO products (sku,name,category,description,price,cost,unit,min_stock,active,sheet_hash)
-          VALUES (?,?,?,?,?,?,?,?,?,?)`).run(r.sku, n.name, n.category, n.description, n.price, n.cost, n.unit, n.min_stock, n.active, h);
+        const res = db.prepare(`INSERT INTO products (sku,name,category,description,price,cost,unit,min_stock,active,name_pl,description_pl,sheet_hash)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(r.sku, n.name, n.category, n.description, n.price, n.cost, n.unit, n.min_stock, n.active, n.name_pl, n.description_pl, h);
         audit(SHEET_USER, 'Создан товар из таблицы', `#${res.lastInsertRowid} ${r.sku} ${n.name}`);
         continue;
       }
       if (p.sheet_hash === null || h === p.sheet_hash) continue; // таблица не менялась — сайт отправит свои правки сам
-      db.prepare(`UPDATE products SET name=?, category=?, description=?, price=?, cost=?, unit=?, min_stock=?, active=?, sheet_hash=?,
-        updated_at=datetime('now') WHERE id=?`).run(n.name, n.category, n.description, n.price, n.cost, n.unit, n.min_stock, n.active, h, p.id);
+      // Пустые польские колонки (например, в таблице до обновления) не затирают польский текст сайта
+      const namePl = n.name_pl || p.name_pl || '';
+      const descPl = n.description_pl || p.description_pl || '';
+      db.prepare(`UPDATE products SET name=?, category=?, description=?, price=?, cost=?, unit=?, min_stock=?, active=?, name_pl=?, description_pl=?,
+        sheet_hash=?, updated_at=datetime('now') WHERE id=?`).run(n.name, n.category, n.description, n.price, n.cost, n.unit, n.min_stock, n.active, namePl, descPl, h, p.id);
       const changed = Object.keys(n).filter((k) => n[k] !== siteNorm(p)[k]);
       audit(SHEET_USER, 'Изменён товар из таблицы', `#${p.id} ${p.sku}: ${changed.join(', ') || 'без изменений'}`);
     }

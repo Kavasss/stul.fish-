@@ -424,3 +424,6 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
   box-shadow: 0 20px 50px rgba(0,0,0,.6); font-size: 14px;
 }
 .cookie-bar a { color: var(--gold-2); text-decoration: underline; }
+
+/* Переключатель языка */
+.lang-btn { font: 600 13px var(--head); letter-spacing: .08em; color: var(--gold-2); }

@@ -14,7 +14,7 @@ var SECRET = 'ВСТАВЬТЕ_СЮДА_SHEETS_SECRET';
 
 var SH = { products: 'Товары', moves: 'Движения', orders: 'Заказы' };
 // Колонки (нумерация с 1)
-var P = { SKU: 1, NAME: 2, CAT: 3, UNIT: 4, PRICE: 5, COST: 6, MIN: 7, ONSITE: 14, DESC: 15, WIDTH: 15 };
+var P = { SKU: 1, NAME: 2, CAT: 3, UNIT: 4, PRICE: 5, COST: 6, MIN: 7, ONSITE: 14, DESC: 15, NAME_PL: 16, DESC_PL: 17, WIDTH: 17 };
 var M = { DATE: 1, SKU: 2, OP: 4, QTY: 5, COMMENT: 7, EMP: 8, ID: 10, WIDTH: 10 };
 var O_WIDTH = 11;
 
@@ -112,6 +112,7 @@ function pull_(ss) {
       row: i + 2, sku: sku, name: str_(r[P.NAME - 1]), category: str_(r[P.CAT - 1]), unit: str_(r[P.UNIT - 1]),
       price: num_(r[P.PRICE - 1]), cost: num_(r[P.COST - 1]), min_stock: num_(r[P.MIN - 1]),
       on_site: str_(r[P.ONSITE - 1]), description: str_(r[P.DESC - 1]),
+      name_pl: str_(r[P.NAME_PL - 1]), description_pl: str_(r[P.DESC_PL - 1]),
     });
   });
   var movements = [];
@@ -140,11 +141,13 @@ function push_(ss, req) {
     var index = {};
     rows.forEach(function (r, i) { var k = str_(r[0]); if (k && !index[k]) index[k] = i + 2; });
     var next = lastRow_(rows, [P.SKU, P.NAME]) + 1;
+    if (str_(ps.getRange(1, P.NAME_PL).getValue()) === '') ps.getRange(1, P.NAME_PL, 1, 2).setValues([['Название (PL)', 'Описание (PL)']]);
     (req.products || []).forEach(function (p) {
       var row = index[p.sku];
       if (!row) { row = next++; index[p.sku] = row; ensureRows_(ps, row); }
       ps.getRange(row, P.SKU, 1, 7).setValues([[p.sku, p.name, p.category, p.unit, p.price, p.cost, p.min_stock]]);
       ps.getRange(row, P.ONSITE, 1, 2).setValues([[p.on_site, p.description]]);
+      ps.getRange(row, P.NAME_PL, 1, 2).setValues([[p.name_pl || '', p.description_pl || '']]);
       res.products++;
     });
     (req.deleted || []).forEach(function (sku) {
@@ -223,7 +226,8 @@ function findPendingRow_(rows, a, tz) {
 function reset_(ss) {
   var ps = sheet_(ss, SH.products), ms = sheet_(ss, SH.moves), os = sheet_(ss, SH.orders);
   var pn = ps.getMaxRows() - 1, mn = ms.getMaxRows() - 1, on = os.getMaxRows() - 1;
-  if (pn > 0) { ps.getRange(2, 1, pn, 7).clearContent(); ps.getRange(2, P.ONSITE, pn, 2).clearContent(); }
+  if (pn > 0) { ps.getRange(2, 1, pn, 7).clearContent(); ps.getRange(2, P.ONSITE, pn, 4).clearContent(); }
+  ps.getRange(1, P.NAME_PL, 1, 2).setValues([['Название (PL)', 'Описание (PL)']]);
   if (mn > 0) {
     ms.getRange(2, M.DATE, mn, 2).clearContent();
     ms.getRange(2, M.OP, mn, 2).clearContent();
