@@ -128,7 +128,26 @@ ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='надёжный-пароль' MANAG
 Подходит любой хостинг с Node.js и постоянным диском, например VPS, Render или Railway с подключённым диском.
 Папку `data/` нужно сохранять между перезапусками и регулярно копировать: в ней база и фотографии.
 
-### Запуск на shulfish.pl
+### Быстрый запуск на VPS одной командой
+
+Нужен чистый VPS с Ubuntu 22.04/24.04 или Debian 12 и root-доступом по SSH. Подключитесь к нему и выполните:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Kavasss/stul.fish-/claude/zen-wright-u8psjn/deploy/install.sh | bash
+```
+
+Скрипт `deploy/install.sh` делает всё сам:
+- ставит Node.js 22 и Caddy;
+- запускает сайт как службу с автоперезапуском;
+- получает HTTPS-сертификат для shulfish.pl;
+- включает файрвол и ежедневные резервные копии в `/var/backups/shulfish`;
+- проверяет, что DNS домена указывает на этот сервер, и выводит пароли для первого входа.
+
+Повторный запуск обновляет код, данные не трогает.
+Настройки (включая связь с Google Таблицей) лежат в `/etc/shulfish/shulfish.env`. После правки выполните `systemctl restart shulfish`.
+Если репозиторий приватный, передайте адрес с токеном: `REPO=https://<токен>@github.com/Kavasss/stul.fish-.git`.
+
+### Запуск на shulfish.pl вручную
 
 1. В DNS домена создайте A-записи `shulfish.pl` и `www.shulfish.pl`, указывающие на IP сервера.
 2. Поставьте [Caddy](https://caddyserver.com). Он сам получит и будет продлевать сертификат HTTPS. Файл `/etc/caddy/Caddyfile`:

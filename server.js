@@ -11,6 +11,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || undefined; // 127.0.0.1 — только за nginx/Caddy
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -1039,7 +1040,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
-  server.listen(PORT, () => {
+  server.listen(PORT, HOST, () => {
     console.log(`SHUL.FISH запущен: http://localhost:${PORT}`);
     if (sheets.configured) { sheets.start(); console.log('Связь с Google Таблицей включена'); }
   });

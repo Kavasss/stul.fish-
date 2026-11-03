@@ -1,0 +1,31 @@
+[Unit]
+Description=SHUL.FISH online shop
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shulfish
+Group=shulfish
+WorkingDirectory=/opt/shulfish
+EnvironmentFile=/etc/shulfish/shulfish.env
+ExecStart=/usr/bin/node /opt/shulfish/server.js
+Restart=always
+RestartSec=3
+
+# Ограничения: служба может писать только в свою папку с данными
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/shulfish
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
