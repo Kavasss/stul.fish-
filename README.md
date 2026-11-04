@@ -160,6 +160,21 @@ curl -fsSL https://raw.githubusercontent.com/Kavasss/stul.fish-/claude/zen-wrigh
 Настройки (включая связь с Google Таблицей) лежат в `/etc/shulfish/shulfish.env`. После правки выполните `systemctl restart shulfish`.
 Если репозиторий приватный, передайте адрес с токеном: `REPO=https://<токен>@github.com/Kavasss/stul.fish-.git`.
 
+### Автообновление из GitHub
+
+Если запустить установку с `AUTO_UPDATE=1`, сервер сам раз в 5 минут проверяет GitHub и ставит новую версию:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Kavasss/stul.fish-/claude/zen-wright-u8psjn/deploy/install.sh | AUTO_UPDATE=1 bash
+```
+
+- перед каждым обновлением делается резервная копия базы и фото;
+- если после обновления сайт не отвечает, сервер возвращает прошлую версию, а неудачную больше не ставит;
+- журнал обновлений: `journalctl -t shulfish-update`; обновить вручную прямо сейчас: `shulfish-update`;
+- выключить: та же команда с `AUTO_UPDATE=0`.
+
+Важно: на сервер попадает всё, что отправлено в ветку `claude/zen-wright-u8psjn`. Давайте право записи в репозиторий только тем, кому доверяете.
+
 ### Запуск на shulfish.pl вручную
 
 1. В DNS домена создайте A-записи `shulfish.pl` и `www.shulfish.pl`, указывающие на IP сервера.

@@ -109,6 +109,18 @@ say "Ежедневные резервные копии (03:30, хранятся
 install -m 755 "$APP_DIR/deploy/backup.sh" /usr/local/bin/shulfish-backup
 echo "30 3 * * * root /usr/local/bin/shulfish-backup >/dev/null 2>&1" > /etc/cron.d/shulfish-backup
 
+install -m 755 "$APP_DIR/deploy/update.sh" /usr/local/bin/shulfish-update
+if [ "${AUTO_UPDATE:-}" = "1" ]; then
+  say "Автообновление из GitHub: раз в 5 минут (с копией базы и откатом при сбое)"
+  install -m 644 "$APP_DIR/deploy/shulfish-update.service" /etc/systemd/system/shulfish-update.service
+  install -m 644 "$APP_DIR/deploy/shulfish-update.timer" /etc/systemd/system/shulfish-update.timer
+  systemctl daemon-reload
+  systemctl enable -q --now shulfish-update.timer
+elif [ "${AUTO_UPDATE:-}" = "0" ]; then
+  systemctl disable -q --now shulfish-update.timer 2>/dev/null || true
+  say "Автообновление выключено"
+fi
+
 say "Файрвол: открыты только SSH, 80 и 443"
 ufw allow OpenSSH >/dev/null
 ufw allow 80/tcp >/dev/null
