@@ -70,6 +70,10 @@ const DELIVERY_AREAS = {
   zielonka: 'Zielonka',
 };
 const DELIVERY_RADIUS_KM = Number(process.env.DELIVERY_RADIUS_KM) || 7;
+// Стоимость доставки: за каждый начатый километр по прямой от центра зоны (грош)
+const DELIVERY_PRICE_PER_KM = Math.round((Number(process.env.DELIVERY_PRICE_PER_KM) || 2) * 100);
+const DELIVERY_MIN_FEE = Math.round((Number(process.env.DELIVERY_MIN_FEE) || 10) * 100); // минимальная стоимость доставки
+const deliveryFee = (km) => Math.max(DELIVERY_MIN_FEE, Math.max(1, Math.ceil(km)) * DELIVERY_PRICE_PER_KM);
 const DELIVERY_CENTER = (process.env.DELIVERY_CENTER || '52.2765,21.0560').split(',').map(Number); // Bazar Trocka
 // GEOCODER_URL=off — не проверять расстояние (тесты, нет интернета)
 const GEOCODER_URL = process.env.GEOCODER_URL || 'https://nominatim.openstreetmap.org/search';
@@ -226,6 +230,7 @@ addColumn('products', 'description_pl', "TEXT NOT NULL DEFAULT ''");
 addColumn('orders', 'lang', "TEXT NOT NULL DEFAULT 'ru'");
 addColumn('orders', 'distance_km', 'REAL');
 addColumn('orders', 'total_final', 'INTEGER'); // сумма по фактическому весу (грош), задаёт менеджер
+addColumn('orders', 'delivery_fee', 'INTEGER'); // стоимость доставки (грош); NULL — не рассчитана, уточнит менеджер
 addColumn('order_items', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mov_sheet_key ON stock_movements(sheet_key) WHERE sheet_key IS NOT NULL;
 UPDATE stock_movements SET product_sku = COALESCE((SELECT sku FROM products WHERE products.id = stock_movements.product_id), '') WHERE product_sku = '';`);
@@ -623,7 +628,7 @@ function need(user, perm) {
   if (perm && !can(user, perm)) throw new HttpError(403, 'Недостаточно прав');
 }
 
-route('GET', '/api/meta', () => ({ categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, delivery_areas: DELIVERY_AREAS, delivery_radius_km: DELIVERY_RADIUS_KM, default_manager_perms: DEFAULT_MANAGER_PERMS }));
+route('GET', '/api/meta', () => ({ categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, delivery_areas: DELIVERY_AREAS, delivery_radius_km: DELIVERY_RADIUS_KM, delivery_price_per_km: DELIVERY_PRICE_PER_KM / 100, default_manager_perms: DEFAULT_MANAGER_PERMS }));
 route('GET', '/api/me', ({ user }) => ({ user: publicUser(user) }));
 
 route('POST', '/api/auth/register', ({ body, req, res }) => {
@@ -927,6 +932,29 @@ route('GET', '/api/inventory.csv', ({ user, query, res }) => {
 });
 
 // --- Заказы ---
+// Проверка адреса курьерской доставки: город из списка, расстояние и стоимость.
+// Если адрес не нашёлся на карте — distance и fee = null (уточнит менеджер).
+async function courierQuote(body) {
+  const area = DELIVERY_AREAS[body.area || 'warszawa'];
+  if (!area) throw new HttpError(400, 'Выберите район доставки из списка');
+  const raw = str(body.address, 300);
+  if (!raw) throw new HttpError(400, 'Укажите адрес доставки');
+  const street = raw.replace(/^\s*(ul\.|ulica|al\.|aleja|os\.|pl\.)\s*/i, '').split(/\s+(?:m\.|lok\.|kv\.|кв\.)/i)[0].replace(/\s*\/\s*\d+\s*$/, '').trim(); // номер квартиры для поиска не нужен
+  const point = await geocode(street, area);
+  let distance = null;
+  if (point) {
+    distance = Math.round(distanceKm(DELIVERY_CENTER, point) * 10) / 10;
+    if (distance > DELIVERY_RADIUS_KM) {
+      throw new HttpError(400, `Адрес примерно в ${distance} км от нас — курьер доставляет в радиусе ${DELIVERY_RADIUS_KM} км от Bazaru Trocka. Выберите самовывоз или позвоните нам.`);
+    }
+  }
+  return { address: `${area}, ${raw}`.slice(0, 340), distance, fee: distance == null ? null : deliveryFee(distance) };
+}
+route('POST', '/api/delivery/quote', async ({ body, req }) => {
+  rateLimit('quote', clientIp(req), 60, 3600e3, 'Слишком много запросов. Попробуйте позже.');
+  const q = await courierQuote(body);
+  return { distance_km: q.distance, km_billed: q.distance == null ? null : Math.max(1, Math.ceil(q.distance)), fee: q.fee == null ? null : q.fee / 100, price_per_km: DELIVERY_PRICE_PER_KM / 100, min_fee: DELIVERY_MIN_FEE / 100 };
+});
 route('POST', '/api/orders', async ({ user, body, req }) => {
   // Не даём боту «выкупить» склад фейковыми заказами
   if (!seesStock(user)) rateLimit('order', clientIp(req), 10, 3600e3, 'Слишком много заказов подряд. Позвоните нам, и мы оформим заказ вручную.');
@@ -937,30 +965,12 @@ route('POST', '/api/orders', async ({ user, body, req }) => {
   const phone = str(body.phone, 30);
   if (!name || !/^[+\d][\d\s()-]{6,}$/.test(phone)) throw new HttpError(400, 'Укажите имя и корректный телефон');
   const delivery = body.delivery === 'pickup' ? 'pickup' : 'courier';
-  let address = str(body.address, 300);
-  let areaName = '', street = '';
-  if (delivery === 'courier') {
-    const area = DELIVERY_AREAS[body.area || 'warszawa'];
-    if (!area) throw new HttpError(400, 'Выберите район доставки из списка');
-    if (!address) throw new HttpError(400, 'Укажите адрес доставки');
-    areaName = area;
-    street = address.replace(/^\s*(ul\.|ulica|al\.|aleja|os\.|pl\.)\s*/i, '').split(/\s+(?:m\.|lok\.|kv\.|кв\.)/i)[0].replace(/\s*\/\s*\d+\s*$/, '').trim(); // номер квартиры для поиска не нужен
-    address = `${area}, ${address}`.slice(0, 340);
-  } else address = '';
-  // Проверка радиуса доставки. Если адрес не нашёлся — заказ принимаем, менеджер уточнит по телефону.
-  let distance = null;
-  if (delivery === 'courier') {
-    const point = await geocode(street, areaName);
-    if (point) {
-      distance = Math.round(distanceKm(DELIVERY_CENTER, point) * 10) / 10;
-      if (distance > DELIVERY_RADIUS_KM) {
-        throw new HttpError(400, `Адрес примерно в ${distance} км от нас — курьер доставляет в радиусе ${DELIVERY_RADIUS_KM} км от Bazaru Trocka. Выберите самовывоз или позвоните нам.`);
-      }
-    }
-  }
+  // Курьер: проверка радиуса и стоимость доставки. Адрес не нашёлся — заказ принимаем, менеджер уточнит.
+  let address = '', distance = null, fee = 0;
+  if (delivery === 'courier') ({ address, distance, fee } = await courierQuote(body));
   const orderId = tx(() => {
-    const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,lang,consent_at,distance_km) VALUES (?,?,?,?,?,?,?,?,datetime('now'),?)")
-      .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000), body.lang === 'pl' ? 'pl' : 'ru', distance);
+    const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,lang,consent_at,distance_km,delivery_fee) VALUES (?,?,?,?,?,?,?,?,datetime('now'),?,?)")
+      .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000), body.lang === 'pl' ? 'pl' : 'ru', distance, fee);
     const oid = Number(r.lastInsertRowid);
     let total = 0;
     for (const it of items) {
@@ -985,7 +995,9 @@ function getOrder(id) {
   const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(id));
   if (!o) throw new HttpError(404, 'Заказ не найден');
   const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(o.id).map((i) => ({ ...i, price: i.price / 100 }));
-  return { ...o, total: o.total / 100, total_final: o.total_final == null ? null : o.total_final / 100, status_name: ORDER_STATUSES[o.status], items };
+  const fee = o.delivery === 'pickup' ? 0 : o.delivery_fee;
+  return { ...o, total: o.total / 100, total_final: o.total_final == null ? null : o.total_final / 100,
+    delivery_fee: fee == null ? null : fee / 100, grand_total: ((o.total_final ?? o.total) + (fee || 0)) / 100, status_name: ORDER_STATUSES[o.status], items };
 }
 route('GET', '/api/orders/my', ({ user }) => {
   need(user);
@@ -1029,11 +1041,21 @@ route('PUT', '/api/orders/:id/total', ({ user, params, body }) => {
   const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(params.id));
   if (!o) throw new HttpError(404, 'Заказ не найден');
   if (o.status === 'cancelled') throw new HttpError(409, 'Заказ отменён');
-  const raw = String(body.total ?? '').trim().replace(',', '.');
-  const total = raw === '' ? null : money(raw, 'сумма');
-  db.prepare("UPDATE orders SET total_final = ?, sheet_ver = sheet_ver + 1, updated_at = datetime('now') WHERE id = ?").run(total, o.id);
+  const parse = (v, name) => { const s = String(v ?? '').trim().replace(',', '.'); return s === '' ? null : money(s, name); };
+  const changes = [];
+  if ('total' in body) {
+    const total = parse(body.total, 'сумма');
+    db.prepare('UPDATE orders SET total_final = ? WHERE id = ?').run(total, o.id);
+    changes.push(`товары по весу: ${total == null ? 'сброшено' : total / 100 + ' zł'}`);
+  }
+  if ('delivery_fee' in body && o.delivery === 'courier') {
+    const f = parse(body.delivery_fee, 'стоимость доставки');
+    db.prepare('UPDATE orders SET delivery_fee = ? WHERE id = ?').run(f, o.id);
+    changes.push(`доставка: ${f == null ? 'не задана' : f / 100 + ' zł'}`);
+  }
+  db.prepare("UPDATE orders SET sheet_ver = sheet_ver + 1, updated_at = datetime('now') WHERE id = ?").run(o.id);
   sheets.schedule();
-  audit(user, 'Сумма по весу', `№${o.id}: ${o.total / 100} → ${total == null ? 'сброшено' : total / 100 + ' zł'}`);
+  audit(user, 'Сумма заказа', `№${o.id}: ${changes.join(', ')}`);
   return { order: getOrder(o.id) };
 });
 

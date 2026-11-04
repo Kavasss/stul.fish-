@@ -34,7 +34,8 @@ const LEGAL = {
 
       <h3>2. Товары и цены</h3>
       <p>Магазин продаёт пищевые продукты: копчёную, вяленую и сушёную рыбу, икру и наборы. Цены указаны в польских злотых (zł)
-      и являются ценами брутто (с НДС/VAT). Стоимость доставки сообщается до подтверждения заказа.</p>
+      и являются ценами брутто (с НДС/VAT). Стоимость курьерской доставки — 2 zł за каждый начатый километр расстояния по прямой
+      от Bazaru Trocka до адреса доставки, но не менее 10 zł; она показывается в корзине до оформления заказа. Самовывоз бесплатный.</p>
       <p>Продукция весовая и продаётся упаковками примерно по 1 кг: фактический вес упаковки — от 900 до 1100 г. Цена на сайте
       указана за 1 кг, поэтому сумма при оформлении заказа предварительная. Окончательная сумма рассчитывается по фактическому весу
       (цена за 1 кг × вес) и сообщается покупателю менеджером при подтверждении заказа, до заключения договора. Если покупатель
@@ -92,7 +93,9 @@ const LEGAL = {
 
       <h3>§ 2. Produkty i ceny</h3>
       <p>Sklep sprzedaje środki spożywcze: ryby wędzone, suszone, przekąski rybne, ikrę oraz zestawy. Ceny podawane są
-      w złotych polskich (zł) i są cenami brutto (zawierają podatek VAT). Koszt dostawy jest podawany przed potwierdzeniem zamówienia.</p>
+      w złotych polskich (zł) i są cenami brutto (zawierają podatek VAT). Koszt dostawy kurierskiej wynosi 2 zł za każdy rozpoczęty
+      kilometr odległości w linii prostej od Bazaru Trocka do adresu dostawy, nie mniej niż 10 zł, i jest wyświetlany w koszyku przed złożeniem zamówienia.
+      Odbiór osobisty jest bezpłatny.</p>
       <p>Produkty sprzedawane są na wagę, w opakowaniach ok. 1 kg — rzeczywista waga opakowania wynosi od 900 do 1100 g. Cena
       w Sklepie dotyczy 1 kg, dlatego kwota podana przy składaniu zamówienia jest orientacyjna. Ostateczna kwota obliczana jest
       według rzeczywistej wagi (cena za 1 kg × waga) i przekazywana Klientowi przez konsultanta przy potwierdzeniu zamówienia,

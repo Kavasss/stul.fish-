@@ -71,7 +71,7 @@ function createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement
       .map((i) => `${i.name} ${fmtQty(i.qty)} ${i.unit} × ${i.price / 100} zł`).join('; ');
     return {
       id: o.id, date: o.created_at.slice(0, 10), customer: o.customer_name, phone: o.phone,
-      delivery: o.delivery === 'pickup' ? 'Самовывоз' : 'Курьер', address: o.address, items, total: (o.total_final ?? o.total) / 100,
+      delivery: o.delivery === 'pickup' ? 'Самовывоз' : 'Курьер', address: o.address, items, total: ((o.total_final ?? o.total) + (o.delivery === 'pickup' ? 0 : o.delivery_fee || 0)) / 100,
       status: ORDER_STATUSES[o.status] || o.status, manager: o.manager_name || '', comment: o.comment,
     };
   }

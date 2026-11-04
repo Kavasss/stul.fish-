@@ -14,7 +14,7 @@ process.env.TRUST_PROXY = '1';
 const http = require('node:http');
 const geo = http.createServer((req, res) => {
   const q = new URL(req.url, 'http://x').searchParams.get('street') || '';
-  const hit = /Daleka/.test(q) ? [{ lat: '52.45', lon: '21.06' }] : /Bliska/.test(q) ? [{ lat: '52.29', lon: '21.10' }] : [];
+  const hit = /Daleka/.test(q) ? [{ lat: '52.45', lon: '21.06' }] : /Bliska/.test(q) ? [{ lat: '52.29', lon: '21.10' }] : /Srednia/.test(q) ? [{ lat: '52.2765', lon: '21.135' }] : [];
   res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(hit));
 }).listen(0);
 process.env.GEOCODER_URL = `http://127.0.0.1:${geo.address().port}/search`;
@@ -90,4 +90,33 @@ test('доставка: адрес дальше 7 км отклоняется, �
   assert.equal(near.status, 200);
   const d = (await near.json()).order.distance_km;
   assert.ok(d > 0 && d < 7, String(d));
+});
+
+test('стоимость доставки: 2 zł за начатый км, минимум 10 zł; самовывоз бесплатно', async () => {
+  const quote = async (address, ip) => {
+    const r = await fetch(base + '/api/delivery/quote', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip },
+      body: JSON.stringify({ area: 'warszawa', address }),
+    });
+    return { status: r.status, data: await r.json() };
+  };
+  const near = await quote('ul. Bliska 5', '203.0.113.96');      // ~3,4 км → 4 км × 2 = 8 → минимум 10
+  assert.equal(near.data.km_billed, 4);
+  assert.equal(near.data.fee, 10);
+  const mid = await quote('ul. Srednia 5', '203.0.113.96');      // ~5,4 км → 6 км × 2 = 12
+  assert.equal(mid.data.km_billed, 6);
+  assert.equal(mid.data.fee, 12);
+  assert.equal((await quote('ul. Nieznana 1', '203.0.113.96')).data.fee, null); // не найден — уточнит менеджер
+  assert.equal((await quote('ul. Daleka 1', '203.0.113.96')).status, 400);
+
+  const order = async (extra, ip) => (await fetch(base + '/api/orders', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip },
+    body: JSON.stringify({ items: [{ product_id: 3, qty: 1 }], customer_name: 'Тест', phone: '+48 600 000 000', consent: true, lang: 'ru', ...extra }),
+  })).json();
+  const c = (await order({ delivery: 'courier', area: 'warszawa', address: 'ul. Srednia 5' }, '203.0.113.97')).order;
+  assert.equal(c.delivery_fee, 12);
+  assert.equal(c.grand_total, Math.round((c.total + 12) * 100) / 100);
+  const p = (await order({ delivery: 'pickup' }, '203.0.113.98')).order;
+  assert.equal(p.delivery_fee, 0);
+  assert.equal(p.grand_total, p.total);
 });

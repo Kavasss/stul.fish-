@@ -368,6 +368,8 @@ function viewCart() {
         <label class="field">${t('cart.address')}<input class="input" name="address" autocomplete="street-address" placeholder="${esc(t('cart.addressPh'))}"></label>
       </div>
       <label class="field">${t('cart.comment')}<textarea class="input" name="comment" placeholder="${esc(t('cart.commentPh'))}"></textarea></label>
+      <div class="total-line"><span class="muted">${t('cart.goods')}</span><span id="goods"></span></div>
+      <div class="total-line"><span class="muted">${t('cart.delivery')}</span><span id="dfee"></span></div>
       <div class="total-line big"><span>${t('cart.total')}</span><b id="total"></b></div>
       <p class="muted" style="margin:-6px 0 0;font-size:13px">${t('cart.weightNote')}</p>
       ${consentBox()}
@@ -384,14 +386,51 @@ function viewCart() {
         <div class="price" style="font-size:18px">${zl(Math.round(i.price * i.qty * 100) / 100)}</div>
         <button class="btn-icon" data-del="${idx}" title="${esc(t('cart.remove'))}" aria-label="${esc(t('cart.remove'))}">✕</button>
       </div>`).join('');
-    $('#total').textContent = zl(Math.round(cartTotal() * 100) / 100);
+    updateTotals();
     $$('[data-inc]').forEach((b) => b.onclick = () => { const i = state.cart[b.dataset.inc]; i.qty += stepFor(i.unit); saveCart(); renderRows(); });
     $$('[data-dec]').forEach((b) => b.onclick = () => { const i = state.cart[b.dataset.dec]; i.qty = Math.max(stepFor(i.unit), i.qty - stepFor(i.unit)); saveCart(); renderRows(); });
     $$('[data-del]').forEach((b) => b.onclick = () => { state.cart.splice(Number(b.dataset.del), 1); saveCart(); state.cart.length ? renderRows() : viewCart(); });
   };
+  // Стоимость доставки: 2 zł за начатый км, считает сервер по адресу
+  let dq = { state: 'enter' };
+  function updateTotals() {
+    const goods = Math.round(cartTotal() * 100) / 100;
+    const pickup = $('#checkout') && $('#checkout').delivery.value === 'pickup';
+    const fee = pickup ? 0 : dq.state === 'ok' ? dq.fee : 0;
+    $('#goods').textContent = zl(goods);
+    $('#dfee').innerHTML = pickup ? t('cart.dFree')
+      : dq.state === 'ok' ? esc(dq.fee > dq.km * dq.rate ? t('cart.dMin', { km: dq.km, sum: zl(dq.fee) }) : t('cart.dKm', { km: dq.km, rate: dq.rate, sum: zl(dq.fee) }))
+      : dq.state === 'loading' ? t('cart.dCalc')
+      : dq.state === 'unknown' ? t('cart.dUnknown')
+      : dq.state === 'error' ? `<span style="color:var(--warn)">${esc(dq.msg)}</span>`
+      : `<span class="muted">${t('cart.dEnter')}</span>`;
+    $('#total').textContent = zl(Math.round((goods + fee) * 100) / 100);
+  }
+  let quoteTimer = null, quoteSeq = 0;
+  async function requote() {
+    const f = $('#checkout');
+    if (f.delivery.value === 'pickup') { updateTotals(); return; }
+    const address = f.address.value.trim();
+    if (address.length < 3) { dq = { state: 'enter' }; updateTotals(); return; }
+    const seq = ++quoteSeq;
+    dq = { state: 'loading' }; updateTotals();
+    try {
+      const r = await api('POST', '/api/delivery/quote', { area: f.area.value, address });
+      if (seq !== quoteSeq) return;
+      dq = r.fee == null ? { state: 'unknown' } : { state: 'ok', fee: r.fee, km: r.km_billed, rate: r.price_per_km };
+    } catch (err) {
+      if (seq !== quoteSeq) return;
+      dq = { state: 'error', msg: err.message };
+    }
+    updateTotals();
+  }
   renderRows();
   const form = $('#checkout');
-  form.addEventListener('change', () => $('#addrField').classList.toggle('hidden', form.delivery.value === 'pickup'));
+  form.addEventListener('change', (e) => {
+    $('#addrField').classList.toggle('hidden', form.delivery.value === 'pickup');
+    if (e.target.name === 'delivery' || e.target.name === 'area' || e.target.name === 'address') requote();
+  });
+  form.address.addEventListener('input', () => { clearTimeout(quoteTimer); quoteTimer = setTimeout(requote, 900); });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(form));
@@ -399,7 +438,7 @@ function viewCart() {
       const { order } = await api('POST', '/api/orders', { ...fd, lang: LANG, consent: form.consent.checked, items: state.cart.map((i) => ({ product_id: i.id, qty: i.qty })) });
       state.cart = []; saveCart();
       app.innerHTML = `<div class="empty"><div class="big">${t('cart.thanks', { id: order.id })}</div>
-        <p>${t('cart.thanksText', { sum: zl(order.total), phone: esc(order.phone) })}</p>
+        <p>${t('cart.thanksText', { sum: zl(order.grand_total), phone: esc(order.phone) })}</p>
         <a href="/catalog" class="btn">${t('cart.continue')}</a></div>`;
     } catch (err) { toast(err.message, true); }
   });
@@ -497,11 +536,14 @@ function orderCard(o, manage = false) {
     ${manage ? `<div class="muted" style="font-size:14px">${esc(o.customer_name)} · <a href="tel:${esc(o.phone)}" style="color:var(--gold-2)">${esc(o.phone)}</a>${o.email ? ' · ' + esc(o.email) : ''}${o.lang === 'pl' ? ' · 🇵🇱 PL' : ''}<br>${o.delivery === 'pickup' ? 'Самовывоз' : 'Курьер: ' + esc(o.address) + (o.distance_km != null ? ` · ${o.distance_km} км` : ' · <span style="color:var(--warn)">расстояние не проверено</span>')}${o.comment ? `<br>💬 ${esc(o.comment)}` : ''}</div>` : ''}
     <ul class="order-items">${o.items.map((i) => `<li>${esc(manage ? i.name : (LANG === 'pl' && i.name_pl) || i.name)} — ${fmtQty(i.qty)} ${esc(manage ? i.unit : unitName(i.unit))} × ${zl(i.price)}</li>`).join('')}</ul>
     ${o.total_final != null
-      ? `<div class="total-line"><span class="muted">${tt('order.sumEst')}</span><span class="muted">${zl(o.total)}</span></div>
-         <div class="total-line"><span class="muted">${tt('order.sumFinal')}</span><b class="price" style="font-size:20px">${zl(o.total_final)}</b></div>`
-      : `<div class="total-line"><span class="muted">${tt(o.status === 'new' ? 'order.sumEst' : 'order.sum')}</span><b class="price" style="font-size:20px">${zl(o.total)}</b></div>`}
+      ? `<div class="total-line"><span class="muted">${tt('order.goodsEst')}</span><span class="muted">${zl(o.total)}</span></div>
+         <div class="total-line"><span class="muted">${tt('order.goodsFinal')}</span><span>${zl(o.total_final)}</span></div>`
+      : `<div class="total-line"><span class="muted">${tt('order.goods')}</span><span>${zl(o.total)}</span></div>`}
+    ${o.delivery === 'courier' ? `<div class="total-line"><span class="muted">${tt('order.delivery')}</span><span>${o.delivery_fee == null ? tt('order.dUnknown') : zl(o.delivery_fee)}</span></div>` : ''}
+    <div class="total-line"><span class="muted">${tt(o.total_final == null && o.status === 'new' ? 'order.sumEst' : 'order.sum')}</span><b class="price" style="font-size:20px">${zl(o.grand_total)}</b></div>
     ${manage && o.status !== 'cancelled' ? `<form class="form-row" data-final="${o.id}" style="margin-top:8px;align-items:end">
-      <label class="field" style="margin:0">Сумма по факт. весу, zł<input class="input" name="total" inputmode="decimal" placeholder="${o.total}" value="${o.total_final ?? ''}"></label>
+      <label class="field" style="margin:0">Товары по факт. весу, zł<input class="input" name="total" inputmode="decimal" placeholder="${o.total}" value="${o.total_final ?? ''}"></label>
+      ${o.delivery === 'courier' ? `<label class="field" style="margin:0">Доставка, zł<input class="input" name="delivery_fee" inputmode="decimal" value="${o.delivery_fee ?? ''}"></label>` : ''}
       <button class="btn" type="submit">Сохранить</button></form>` : ''}
   </div>`;
 }
@@ -808,7 +850,9 @@ async function adminOrders(main) {
     $('#olist').innerHTML = orders.length ? orders.map((o) => orderCard(o, true)).join('') : '<div class="panel empty">Заказов нет</div>';
     $$('[data-final]', main).forEach((f) => f.addEventListener('submit', async (e) => {
       e.preventDefault();
-      try { await api('PUT', `/api/orders/${f.dataset.final}/total`, { total: f.total.value }); toast('Сумма по весу сохранена'); load(); }
+      const body = { total: f.total.value };
+      if (f.delivery_fee) body.delivery_fee = f.delivery_fee.value;
+      try { await api('PUT', `/api/orders/${f.dataset.final}/total`, body); toast('Сумма заказа сохранена'); load(); }
       catch (err) { toast(err.message, true); }
     }));
     $$('[data-status]', main).forEach((s) => s.addEventListener('change', async () => {
