@@ -20,7 +20,7 @@ const T = {
     privacy: ['Политика конфиденциальности — SHUL.FISH', 'Как SHUL.FISH обрабатывает и защищает персональные данные покупателей (RODO/GDPR).'],
     cookies: ['Политика cookies — SHUL.FISH', 'Какие cookies использует сайт SHUL.FISH.'],
     notFound: 'Страница не найдена — SHUL.FISH',
-    cats: { smoked: 'Копчёная рыба', cured: 'Вяленая рыба', dried: 'Сушёная рыба', caviar: 'Икра', sets: 'Наборы' },
+    cats: { smoked: 'Копчёная рыба', cured: 'Вяленая рыба', dried: 'Сушёная рыба', caviar: 'Икра', frozen: 'Замороженная рыба и морепродукты', sets: 'Наборы' },
   },
   pl: {
     home: ['SHUL.FISH — ryby wędzone, suszone i ikra w Warszawie', 'SHUL.FISH — ryby wędzone, suszone i przekąski rybne premium, ikra czerwona i kawior. Opakowania ok. 1 kg, dostawa w Warszawie w dniu zamówienia.'],
@@ -33,7 +33,7 @@ const T = {
     privacy: ['Polityka prywatności — SHUL.FISH', 'Jak SHUL.FISH przetwarza i chroni dane osobowe klientów (RODO).'],
     cookies: ['Polityka cookies — SHUL.FISH', 'Jakich plików cookies używa sklep SHUL.FISH.'],
     notFound: 'Nie znaleziono strony — SHUL.FISH',
-    cats: { smoked: 'Ryby wędzone', cured: 'Ryby suszone', dried: 'Przekąski rybne', caviar: 'Ikra i kawior', sets: 'Zestawy' },
+    cats: { smoked: 'Ryby wędzone', cured: 'Ryby suszone', dried: 'Przekąski rybne', caviar: 'Ikra i kawior', frozen: 'Mrożone ryby i owoce morza', sets: 'Zestawy' },
   },
 };
 const PRIVATE = /^\/(cart|login|register|account|admin)(\/|$)/;

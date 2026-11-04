@@ -33,7 +33,7 @@ const LEGAL = {
       Правила опубликованы на русском и польском языках. При расхождениях преимущество имеет польская версия.</p>
 
       <h3>2. Товары и цены</h3>
-      <p>Магазин продаёт пищевые продукты: копчёную, вяленую и сушёную рыбу, икру и наборы. Цены указаны в польских злотых (zł)
+      <p>Магазин продаёт пищевые продукты: копчёную, вяленую, сушёную и замороженную рыбу, морепродукты, икру и наборы. Цены указаны в польских злотых (zł)
       и являются ценами брутто (с НДС/VAT). Стоимость курьерской доставки — 2 zł за каждый начатый километр расстояния по прямой
       от Bazaru Trocka до адреса доставки, но не менее 10 zł; она показывается в корзине до оформления заказа. Самовывоз бесплатный.</p>
       <p>Продукция весовая и продаётся упаковками примерно по 1 кг: фактический вес упаковки — от 900 до 1100 г. Цена на сайте
@@ -92,7 +92,7 @@ const LEGAL = {
       Regulamin opublikowano w języku polskim i rosyjskim. W razie rozbieżności rozstrzyga wersja polska.</p>
 
       <h3>§ 2. Produkty i ceny</h3>
-      <p>Sklep sprzedaje środki spożywcze: ryby wędzone, suszone, przekąski rybne, ikrę oraz zestawy. Ceny podawane są
+      <p>Sklep sprzedaje środki spożywcze: ryby wędzone, suszone, przekąski rybne, mrożone ryby i owoce morza, ikrę oraz zestawy. Ceny podawane są
       w złotych polskich (zł) i są cenami brutto (zawierają podatek VAT). Koszt dostawy kurierskiej wynosi 2 zł za każdy rozpoczęty
       kilometr odległości w linii prostej od Bazaru Trocka do adresu dostawy, nie mniej niż 10 zł, i jest wyświetlany w koszyku przed złożeniem zamówienia.
       Odbiór osobisty jest bezpłatny.</p>
