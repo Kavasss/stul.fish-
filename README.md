@@ -113,6 +113,16 @@ ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='надёжный-пароль' MANAG
 - Тексты интерфейса лежат в `public/js/i18n.js`, правовые тексты обоих языков — в `public/js/legal.js`.
 - Кнопка заказа подписана «Zamawiam z obowiązkiem zapłaty». Этого требует ст. 17 польского закона о правах потребителя.
 
+## SEO: Google и соцсети
+
+- У страниц обычные адреса: `/product/3`, `/catalog/caviar`, `/terms`. Старые ссылки вида `/#/product/3` перенаправляются сами.
+- Сервер подставляет в каждую страницу свой `<title>`, описание, canonical, hreflang (RU/PL) и Open Graph для превью в соцсетях.
+  У товаров есть ещё разметка schema.org `Product`: цена в PLN и наличие.
+- `https://shulfish.pl/sitemap.xml` собирается из каталога автоматически, на двух языках. Скрытые товары в неё не попадают.
+- `https://shulfish.pl/robots.txt` закрывает от поисковиков админку, кабинет, корзину и API.
+- Адрес сайта для ссылок задаётся переменной `SITE_URL` (по умолчанию `https://shulfish.pl`).
+- В Google Search Console: **Файлы Sitemap → добавить `sitemap.xml`**.
+
 ## Правовые страницы
 
 На сайте есть «Правила магазина», «Политика конфиденциальности» (RODO) и «Политика cookies».

@@ -48,15 +48,15 @@ const I18N = {
     'cart.checkout': 'Оформление заказа', 'f.name': 'Имя', 'f.phone': 'Телефон', 'f.email': 'E-mail', 'f.password': 'Пароль',
     'cart.courier': 'Курьер по Варшаве', 'cart.pickup': 'Самовывоз', 'cart.address': 'Адрес доставки', 'cart.addressPh': 'ул., дом, кв.',
     'cart.comment': 'Комментарий', 'cart.commentPh': 'Удобное время, домофон…', 'cart.total': 'Итого', 'cart.order': 'Заказать с обязательством оплаты',
-    'cart.loginHint': '<a href="#/login" style="color:var(--gold-2)">Войдите</a>, чтобы видеть историю заказов.', 'cart.remove': 'Удалить',
+    'cart.loginHint': '<a href="/login" style="color:var(--gold-2)">Войдите</a>, чтобы видеть историю заказов.', 'cart.remove': 'Удалить',
     'cart.thanks': 'Спасибо! Заказ №{id} принят', 'cart.thanksText': 'Сумма: <b style="color:var(--gold-2)">{sum}</b>. Менеджер свяжется с вами по телефону {phone}.',
     'cart.continue': 'Продолжить покупки',
-    'consent': 'Я принимаю <a href="#/terms" target="_blank">правила магазина</a> и <a href="#/privacy" target="_blank">политику конфиденциальности</a>',
+    'consent': 'Я принимаю <a href="/terms" target="_blank">правила магазина</a> и <a href="/privacy" target="_blank">политику конфиденциальности</a>',
     'auth.login': 'Вход', 'auth.register': 'Регистрация', 'auth.create': 'Создать аккаунт', 'auth.enter': 'Войти', 'auth.welcome': 'Добро пожаловать, {name}!',
     'acc.title': 'Личный кабинет', 'acc.orders': 'Мои заказы', 'acc.noOrders': 'Заказов пока нет', 'acc.admin': 'Панель управления',
     'acc.oldPw': 'Текущий пароль', 'acc.newPw': 'Новый пароль', 'acc.logout': 'Выйти', 'acc.loggedOut': 'Вы вышли из аккаунта',
     'acc.delete': 'Удалить аккаунт и мои данные', 'acc.delTitle': 'Удаление аккаунта',
-    'acc.delText': 'Аккаунт и личные данные профиля будут удалены безвозвратно. Данные уже оформленных заказов мы обязаны хранить для бухгалтерии (см. <a href="#/privacy" style="color:var(--gold-2)">политику конфиденциальности</a>), но они больше не будут связаны с аккаунтом.',
+    'acc.delText': 'Аккаунт и личные данные профиля будут удалены безвозвратно. Данные уже оформленных заказов мы обязаны хранить для бухгалтерии (см. <a href="/privacy" style="color:var(--gold-2)">политику конфиденциальности</a>), но они больше не будут связаны с аккаунтом.',
     'acc.delPw': 'Пароль для подтверждения', 'acc.delBtn': 'Удалить навсегда', 'acc.deleted': 'Аккаунт удалён',
     'order.n': 'Заказ №{id}', 'order.sum': 'Сумма',
     'role.admin': 'Администратор', 'role.manager': 'Менеджер', 'role.customer': 'Покупатель',
@@ -100,15 +100,15 @@ const I18N = {
     'cart.checkout': 'Składanie zamówienia', 'f.name': 'Imię', 'f.phone': 'Telefon', 'f.email': 'E-mail', 'f.password': 'Hasło',
     'cart.courier': 'Kurier w Warszawie', 'cart.pickup': 'Odbiór osobisty', 'cart.address': 'Adres dostawy', 'cart.addressPh': 'ulica, nr domu, nr mieszkania',
     'cart.comment': 'Komentarz', 'cart.commentPh': 'Dogodna godzina, domofon…', 'cart.total': 'Razem', 'cart.order': 'Zamawiam z obowiązkiem zapłaty',
-    'cart.loginHint': '<a href="#/login" style="color:var(--gold-2)">Zaloguj się</a>, aby widzieć historię zamówień.', 'cart.remove': 'Usuń',
+    'cart.loginHint': '<a href="/login" style="color:var(--gold-2)">Zaloguj się</a>, aby widzieć historię zamówień.', 'cart.remove': 'Usuń',
     'cart.thanks': 'Dziękujemy! Zamówienie nr {id} zostało przyjęte', 'cart.thanksText': 'Kwota: <b style="color:var(--gold-2)">{sum}</b>. Konsultant skontaktuje się z Tobą pod numerem {phone}.',
     'cart.continue': 'Kontynuuj zakupy',
-    'consent': 'Akceptuję <a href="#/terms" target="_blank">regulamin sklepu</a> i <a href="#/privacy" target="_blank">politykę prywatności</a>',
+    'consent': 'Akceptuję <a href="/terms" target="_blank">regulamin sklepu</a> i <a href="/privacy" target="_blank">politykę prywatności</a>',
     'auth.login': 'Logowanie', 'auth.register': 'Rejestracja', 'auth.create': 'Załóż konto', 'auth.enter': 'Zaloguj się', 'auth.welcome': 'Witaj, {name}!',
     'acc.title': 'Moje konto', 'acc.orders': 'Moje zamówienia', 'acc.noOrders': 'Nie masz jeszcze zamówień', 'acc.admin': 'Panel zarządzania',
     'acc.oldPw': 'Obecne hasło', 'acc.newPw': 'Nowe hasło', 'acc.logout': 'Wyloguj się', 'acc.loggedOut': 'Wylogowano',
     'acc.delete': 'Usuń konto i moje dane', 'acc.delTitle': 'Usuwanie konta',
-    'acc.delText': 'Konto i dane osobowe profilu zostaną trwale usunięte. Dane złożonych już zamówień musimy przechowywać do celów księgowych (zob. <a href="#/privacy" style="color:var(--gold-2)">politykę prywatności</a>), ale nie będą one już powiązane z kontem.',
+    'acc.delText': 'Konto i dane osobowe profilu zostaną trwale usunięte. Dane złożonych już zamówień musimy przechowywać do celów księgowych (zob. <a href="/privacy" style="color:var(--gold-2)">politykę prywatności</a>), ale nie będą one już powiązane z kontem.',
     'acc.delPw': 'Hasło w celu potwierdzenia', 'acc.delBtn': 'Usuń na zawsze', 'acc.deleted': 'Konto zostało usunięte',
     'order.n': 'Zamówienie nr {id}', 'order.sum': 'Kwota',
     'role.admin': 'Administrator', 'role.manager': 'Menedżer', 'role.customer': 'Klient',
@@ -179,8 +179,11 @@ function trError(msg) {
 // Статичные тексты в index.html: data-i18n (innerHTML), data-i18n-title (title/aria-label)
 function applyStaticI18n() {
   document.documentElement.lang = LANG;
-  document.title = t('meta.title');
-  document.querySelector('meta[name="description"]')?.setAttribute('content', t('meta.desc'));
+  // Заголовок и описание конкретной страницы подставляет сервер (seo.js) — общий ставим только на главной
+  if (location.pathname === '/') {
+    document.title = t('meta.title');
+    document.querySelector('meta[name="description"]')?.setAttribute('content', t('meta.desc'));
+  }
   document.querySelectorAll('[data-i18n]').forEach((el) => { el.innerHTML = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-title]').forEach((el) => {
     el.title = t(el.dataset.i18nTitle);

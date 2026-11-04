@@ -193,7 +193,7 @@ const LEGAL = {
       у сотрудников, которым он нужен для работы, и каждое их действие записывается в журнал.</p>
 
       <h3>7. Cookies</h3>
-      <p>Подробнее — на странице ${gold('#/cookies', 'Cookies')}.</p>`,
+      <p>Подробнее — на странице ${gold('/cookies', 'Cookies')}.</p>`,
     pl: () => `
       <h3>1. Administrator danych</h3>
       <p>Administratorem Twoich danych osobowych jest:</p>${sellerBlock()}
@@ -243,7 +243,7 @@ const LEGAL = {
       Dostęp do danych zamówień mają tylko pracownicy, którym jest on niezbędny do pracy, a każda ich czynność jest rejestrowana.</p>
 
       <h3>7. Cookies</h3>
-      <p>Szczegóły znajdziesz na stronie ${gold('#/cookies', 'Polityka cookies')}.</p>`,
+      <p>Szczegóły znajdziesz na stronie ${gold('/cookies', 'Polityka cookies')}.</p>`,
   },
 
   /* ============================ COOKIES ============================ */
@@ -282,7 +282,7 @@ function viewLegal(kind) {
     ${legalIncomplete() ? `<div class="panel" style="border-color:var(--warn);margin-bottom:18px">${t('legal.incomplete')}</div>` : ''}
     <div class="panel legal-body">${page[LANG]()}</div>
     <p class="muted" style="margin-top:14px">${t('legal.other')}
-      ${Object.entries(LEGAL).filter(([k]) => k !== kind).map(([k, v]) => gold('#/' + k, v.title[LANG])).join(' · ')}</p>
+      ${Object.entries(LEGAL).filter(([k]) => k !== kind).map(([k, v]) => gold('/' + k, v.title[LANG])).join(' · ')}</p>
   </article>`;
 }
 
@@ -293,7 +293,7 @@ function cookieNotice() {
   if (seen) return;
   const bar = document.createElement('div');
   bar.className = 'cookie-bar';
-  bar.innerHTML = `<span>${t('cookie.text')} <a href="#/cookies">${t('cookie.more')}</a></span><button class="btn sm primary">${t('cookie.ok')}</button>`;
+  bar.innerHTML = `<span>${t('cookie.text')} <a href="/cookies">${t('cookie.more')}</a></span><button class="btn sm primary">${t('cookie.ok')}</button>`;
   bar.querySelector('button').addEventListener('click', () => {
     try { localStorage.setItem('sf_cookie_ok', '1'); } catch { /* ничего */ }
     bar.remove();

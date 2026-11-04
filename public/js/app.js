@@ -117,19 +117,31 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal
 
 /* ---------------- Роутер ---------------- */
 const routes = [
-  [/^#?\/?$/, viewHome],
-  [/^#\/catalog(?:\/(\w+))?$/, viewCatalog],
-  [/^#\/product\/(\d+)$/, viewProduct],
-  [/^#\/cart$/, viewCart],
-  [/^#\/login$/, () => viewAuth('login')],
-  [/^#\/register$/, () => viewAuth('register')],
-  [/^#\/account$/, viewAccount],
-  [/^#\/delivery$/, viewDelivery],
-  [/^#\/(privacy|terms|cookies)$/, viewLegal],
-  [/^#\/admin(?:\/(\w+))?$/, viewAdmin],
+  [/^\/$/, viewHome],
+  [/^\/catalog(?:\/(\w+))?$/, viewCatalog],
+  [/^\/product\/(\d+)$/, viewProduct],
+  [/^\/cart$/, viewCart],
+  [/^\/login$/, () => viewAuth('login')],
+  [/^\/register$/, () => viewAuth('register')],
+  [/^\/account$/, viewAccount],
+  [/^\/delivery$/, viewDelivery],
+  [/^\/(privacy|terms|cookies)$/, viewLegal],
+  [/^\/admin(?:\/(\w+))?$/, viewAdmin],
 ];
+let routedOnce = false;
+function clientTitle(p) {
+  let m;
+  if ((m = /^\/catalog\/(\w+)$/.exec(p)) && state.meta?.categories[m[1]]) return `${catName(m[1])} — SHUL.FISH`;
+  if (p === '/catalog') return `${t('cat.title')} — SHUL.FISH`;
+  if (p === '/delivery') return `${t('del.title')} — SHUL.FISH`;
+  if (/^\/(terms|privacy|cookies)$/.test(p)) return `${LEGAL[p.slice(1)].title[LANG]} — SHUL.FISH`;
+  return t('meta.title');
+}
 async function router() {
-  const hash = location.hash || '#/';
+  const hash = location.pathname.replace(/\/+$/, '') || '/';
+  // При переходах внутри сайта обновляем заголовок вкладки (при первой загрузке его уже поставил сервер)
+  if (routedOnce) document.title = clientTitle(hash);
+  routedOnce = true;
   $('#nav').classList.remove('open');
   $$('#nav a').forEach((a) => a.classList.toggle('active', hash === a.getAttribute('href')));
   for (const [re, fn] of routes) {
@@ -140,9 +152,22 @@ async function router() {
       return;
     }
   }
-  app.innerHTML = `<div class="empty"><div class="big">${t('common.notFound')}</div><a class="btn" href="#/">${t('common.home')}</a></div>`;
+  app.innerHTML = `<div class="empty"><div class="big">${t('common.notFound')}</div><a class="btn" href="/">${t('common.home')}</a></div>`;
 }
-window.addEventListener('hashchange', router);
+window.addEventListener('popstate', router);
+// Переход внутри сайта без перезагрузки страницы
+function navigate(to) {
+  if (to !== location.pathname) history.pushState(null, '', to);
+  router();
+}
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href^="/"]');
+  if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.target === '_blank') return;
+  const href = a.getAttribute('href');
+  if (/^\/(uploads|img|css|js)\//.test(href) || /\.[a-z0-9]+$/i.test(href)) return; // файлы открываем как есть
+  e.preventDefault();
+  navigate(href);
+});
 $('#burger').addEventListener('click', () => $('#nav').classList.toggle('open'));
 $('#langBtn').addEventListener('click', () => {
   setLang(LANG === 'pl' ? 'ru' : 'pl');
@@ -150,7 +175,7 @@ $('#langBtn').addEventListener('click', () => {
   const bar = $('.cookie-bar');
   if (bar) { bar.remove(); cookieNotice(); }
   // Убираем ?lang=… из адреса, чтобы он не перебивал выбор при обновлении страницы
-  if (location.search) history.replaceState(null, '', location.pathname + location.hash);
+  if (location.search) history.replaceState(null, '', location.pathname);
   router();
 });
 
@@ -164,10 +189,10 @@ function productCard(p) {
   const badge = p.badge ? `<span class="badge${p.category === 'caviar' ? ' red' : ''}">${esc(badgeName(p.badge))}</span>` : '';
   const stock = !p.in_stock ? `<span class="stock-tag out">${t('card.outOfStock')}</span>` : '';
   return `<article class="card">
-    <a href="#/product/${p.id}" class="card-img">${productImage(p)}${badge}${stock}</a>
+    <a href="/product/${p.id}" class="card-img">${productImage(p)}${badge}${stock}</a>
     <div class="card-body">
       <div class="card-cat">${esc(catName(p.category))}</div>
-      <a href="#/product/${p.id}" class="card-title">${esc(pName(p))}</a>
+      <a href="/product/${p.id}" class="card-title">${esc(pName(p))}</a>
       <div class="card-desc">${esc(pDesc(p))}</div>
       <div class="card-foot">
         <div class="price">${zl(p.price)} <small>/ ${esc(unitName(p.unit))}</small></div>
@@ -197,8 +222,8 @@ async function viewHome() {
       </div>
       <div class="plaque">${t('home.plaque')}</div>
       <div class="hero-cta">
-        <a href="#/catalog" class="btn primary">${t('home.toCatalog')}</a>
-        <a href="#/catalog/caviar" class="btn">${t('home.caviar')}</a>
+        <a href="/catalog" class="btn primary">${t('home.toCatalog')}</a>
+        <a href="/catalog/caviar" class="btn">${t('home.caviar')}</a>
       </div>
     </div>
     <div class="hero-badge"><img src="/img/logo.jpg" alt="${esc(t('home.logoAlt'))}"></div>
@@ -212,12 +237,12 @@ async function viewHome() {
 
   <h2 class="section-title">${t('home.categories')}</h2>
   <div class="cats">
-    ${cats.map((k) => `<a href="#/catalog/${k}" class="cat"><div class="cat-art">${productArt(k)}</div><b>${t('home.c.' + k)}</b><span>${t('home.c.' + k + '.s')}</span></a>`).join('')}
+    ${cats.map((k) => `<a href="/catalog/${k}" class="cat"><div class="cat-art">${productArt(k)}</div><b>${t('home.c.' + k)}</b><span>${t('home.c.' + k + '.s')}</span></a>`).join('')}
   </div>
 
   <h2 class="section-title">${t('home.hits')}</h2>
   <div class="grid">${products.map(productCard).join('') || `<div class="empty">${t('home.soon')}</div>`}</div>
-  <div style="text-align:center;margin-top:26px"><a href="#/catalog" class="btn">${t('home.allCatalog')}</a></div>`;
+  <div style="text-align:center;margin-top:26px"><a href="/catalog" class="btn">${t('home.allCatalog')}</a></div>`;
   bindAddButtons(products);
 }
 
@@ -227,8 +252,8 @@ async function viewCatalog(category = '') {
     <h1>${category && cats.includes(category) ? esc(catName(category)) : t('cat.title')}</h1>
     <div class="catalog-head">
       <div class="chips">
-        <a class="chip ${!category ? 'active' : ''}" href="#/catalog">${t('cat.all')}</a>
-        ${cats.map((k) => `<a class="chip ${category === k ? 'active' : ''}" href="#/catalog/${k}">${esc(catName(k))}</a>`).join('')}
+        <a class="chip ${!category ? 'active' : ''}" href="/catalog">${t('cat.all')}</a>
+        ${cats.map((k) => `<a class="chip ${category === k ? 'active' : ''}" href="/catalog/${k}">${esc(catName(k))}</a>`).join('')}
       </div>
       <div class="search">
         <input class="input" id="q" placeholder="${esc(t('cat.search'))}" style="width:200px">
@@ -257,10 +282,11 @@ async function viewCatalog(category = '') {
 
 async function viewProduct(id) {
   const { product: p } = await api('GET', `/api/products/${id}`);
+  document.title = `${pName(p)} — SHUL.FISH`;
   const step = stepFor(p.unit);
   const imgs = p.images;
   app.innerHTML = `
-    <p><a href="#/catalog/${p.category}" class="muted">← ${esc(catName(p.category))}</a></p>
+    <p><a href="/catalog/${p.category}" class="muted">← ${esc(catName(p.category))}</a></p>
     <div class="product-page">
       <div>
         <div class="gallery-main" id="mainImg">${imgs.length ? `<img src="${esc(imgs[0].url)}" alt="${esc(pName(p))}">` : productArt(p.category, catName(p.category).toUpperCase())}</div>
@@ -280,7 +306,7 @@ async function viewProduct(id) {
           <div class="qty"><button id="minus">−</button><input id="qty" value="${step}" inputmode="decimal"><button id="plus">+</button></div>
           <button class="btn primary" id="buy">${t('card.toCart')}</button>
         </div>` : ''}
-        ${can('products.edit') ? `<p style="margin-top:22px"><a class="btn sm ghost" href="#/admin/products" data-edit="${p.id}">${t('p.edit')}</a></p>` : ''}
+        ${can('products.edit') ? `<p style="margin-top:22px"><a class="btn sm ghost" href="/admin/products" data-edit="${p.id}">${t('p.edit')}</a></p>` : ''}
       </div>
     </div>`;
   $$('.thumbs img').forEach((th) => th.addEventListener('click', () => {
@@ -318,7 +344,7 @@ const consentBox = () => `<label class="check consent"><input type="checkbox" na
 function cartTotal() { return state.cart.reduce((s, i) => s + i.price * i.qty, 0); }
 function viewCart() {
   if (!state.cart.length) {
-    app.innerHTML = `<div class="empty"><div class="big">${t('cart.empty')}</div><p>${t('cart.emptyText')}</p><a href="#/catalog" class="btn primary">${t('cart.toCatalog')}</a></div>`;
+    app.innerHTML = `<div class="empty"><div class="big">${t('cart.empty')}</div><p>${t('cart.emptyText')}</p><a href="/catalog" class="btn primary">${t('cart.toCatalog')}</a></div>`;
     return;
   }
   const me = state.me || {};
@@ -348,7 +374,7 @@ function viewCart() {
     $('#cartRows').innerHTML = state.cart.map((i, idx) => `
       <div class="cart-row">
         <div class="thumb">${productImage(i)}</div>
-        <div><a href="#/product/${i.id}"><b>${esc(pName(i))}</b></a><div class="muted">${zl(i.price)} / ${esc(unitName(i.unit))}</div></div>
+        <div><a href="/product/${i.id}"><b>${esc(pName(i))}</b></a><div class="muted">${zl(i.price)} / ${esc(unitName(i.unit))}</div></div>
         <div class="qty row-qty"><button data-dec="${idx}">−</button><input value="${fmtQty(i.qty)}" readonly><button data-inc="${idx}">+</button></div>
         <div class="price" style="font-size:18px">${zl(Math.round(i.price * i.qty * 100) / 100)}</div>
         <button class="btn-icon" data-del="${idx}" title="${esc(t('cart.remove'))}" aria-label="${esc(t('cart.remove'))}">✕</button>
@@ -369,17 +395,17 @@ function viewCart() {
       state.cart = []; saveCart();
       app.innerHTML = `<div class="empty"><div class="big">${t('cart.thanks', { id: order.id })}</div>
         <p>${t('cart.thanksText', { sum: zl(order.total), phone: esc(order.phone) })}</p>
-        <a href="#/catalog" class="btn">${t('cart.continue')}</a></div>`;
+        <a href="/catalog" class="btn">${t('cart.continue')}</a></div>`;
     } catch (err) { toast(err.message, true); }
   });
 }
 
 /* ---------------- Вход / регистрация / кабинет ---------------- */
 function viewAuth(mode) {
-  if (state.me) { location.hash = '#/account'; return; }
+  if (state.me) { navigate('/account'); return; }
   const reg = mode === 'register';
   app.innerHTML = `<div class="auth-box panel glow">
-    <div class="tabs"><a class="chip ${reg ? '' : 'active'}" href="#/login">${t('auth.login')}</a><a class="chip ${reg ? 'active' : ''}" href="#/register">${t('auth.register')}</a></div>
+    <div class="tabs"><a class="chip ${reg ? '' : 'active'}" href="/login">${t('auth.login')}</a><a class="chip ${reg ? 'active' : ''}" href="/register">${t('auth.register')}</a></div>
     <form class="form" id="authForm">
       ${reg ? `<label class="field">${t('f.name')}<input class="input" name="name" required autocomplete="name"></label>` : ''}
       <label class="field">${t('f.email')}<input class="input" name="email" type="email" required autocomplete="email"></label>
@@ -397,13 +423,13 @@ function viewAuth(mode) {
       const { user } = await api('POST', reg ? '/api/auth/register' : '/api/auth/login', fd);
       state.me = user; updateHeader();
       toast(t('auth.welcome', { name: user.name }));
-      location.hash = user.role === 'customer' ? '#/account' : '#/admin';
+      navigate(user.role === 'customer' ? '/account' : '/admin');
     } catch (err) { toast(err.message, true); }
   });
 }
 
 async function viewAccount() {
-  if (!state.me) { location.hash = '#/login'; return; }
+  if (!state.me) { navigate('/login'); return; }
   const { orders } = await api('GET', '/api/orders/my');
   const me = state.me;
   app.innerHTML = `<h1>${t('acc.title')}</h1>
@@ -417,7 +443,7 @@ async function viewAccount() {
         <h3 style="margin:0">${esc(me.name)}</h3><span class="role-pill role-${me.role}">${t('role.' + me.role)}</span>
       </div>
       <p class="muted">${esc(me.email)}</p>
-      ${isStaff() ? `<p><a href="#/admin" class="btn primary">${t('acc.admin')}</a></p>` : ''}
+      ${isStaff() ? `<p><a href="/admin" class="btn primary">${t('acc.admin')}</a></p>` : ''}
       <form class="form" id="profile">
         <label class="field">${t('f.name')}<input class="input" name="name" value="${esc(me.name)}" autocomplete="name"></label>
         <label class="field">${t('f.phone')}<input class="input" name="phone" value="${esc(me.phone || '')}" autocomplete="tel"></label>
@@ -443,14 +469,14 @@ async function viewAccount() {
       e.preventDefault();
       try {
         await api('POST', '/api/me/delete', { password: e.target.password.value });
-        closeModal(); state.me = null; updateHeader(); location.hash = '#/'; toast(t('acc.deleted'));
+        closeModal(); state.me = null; updateHeader(); navigate('/'); toast(t('acc.deleted'));
       } catch (err) { toast(err.message, true); }
     });
   }));
 }
 async function logout() {
   await api('POST', '/api/auth/logout', {});
-  state.me = null; updateHeader(); location.hash = '#/';
+  state.me = null; updateHeader(); navigate('/');
   toast(t('acc.loggedOut'));
 }
 // Роли в админке всегда по-русски
@@ -483,7 +509,7 @@ const ADMIN_SECTIONS = [
   ['log', 'Журнал', 'log.view'],
 ];
 async function viewAdmin(section = 'dashboard') {
-  if (!state.me) { location.hash = '#/login'; return; }
+  if (!state.me) { navigate('/login'); return; }
   if (!isStaff()) { app.innerHTML = '<div class="empty"><div class="big">Доступ запрещён</div>Раздел только для сотрудников.</div>'; return; }
   const allowed = ADMIN_SECTIONS.filter(([, , p]) => !p || can(p));
   if (!allowed.find(([k]) => k === section)) section = 'dashboard';
@@ -492,8 +518,8 @@ async function viewAdmin(section = 'dashboard') {
   app.innerHTML = `<div class="admin-layout">
     <aside class="panel side">
       <div class="who"><b>${esc(state.me.name)}</b><span class="role-pill role-${state.me.role}">${roleName(state.me.role)}</span></div>
-      ${allowed.map(([k, t]) => `<a href="#/admin/${k}" class="${k === section ? 'active' : ''}">${t}${k === 'orders' && stats.orders_new ? `<span class="count">${stats.orders_new}</span>` : ''}</a>`).join('')}
-      <a href="#/" >← На сайт</a>
+      ${allowed.map(([k, t]) => `<a href="/admin/${k}" class="${k === section ? 'active' : ''}">${t}${k === 'orders' && stats.orders_new ? `<span class="count">${stats.orders_new}</span>` : ''}</a>`).join('')}
+      <a href="/" >← На сайт</a>
     </aside>
     <section id="adminMain"></section>
   </div>`;
@@ -508,7 +534,7 @@ function adminDashboard(main, stats) {
     ${stats.weak_passwords ? `<div class="panel" style="border-color:var(--danger);margin-bottom:20px"><h3 style="color:var(--danger)">⚠ Небезопасные пароли</h3>
       <p>У этих учётных записей стоит общеизвестный пароль: <b>${stats.weak_passwords.map(esc).join(', ')}</b>. Любой может войти под ними — смените пароли в разделе «Сотрудники» или в личном кабинете.</p></div>` : ''}
     <div class="stats">
-      ${'orders_new' in stats ? `<a href="#/admin/orders" class="stat"><div class="v">${stats.orders_new}</div><div class="l">Новых заказов</div></a>
+      ${'orders_new' in stats ? `<a href="/admin/orders" class="stat"><div class="v">${stats.orders_new}</div><div class="l">Новых заказов</div></a>
       <div class="stat"><div class="v">${stats.orders_active}</div><div class="l">Заказов в работе</div></div>` : ''}
       ${'revenue_30d' in stats ? `<div class="stat"><div class="v">${zl(stats.revenue_30d)}</div><div class="l">Выручка за 30 дней</div></div>
       <div class="stat"><div class="v">${stats.products}</div><div class="l">Позиций в каталоге</div></div>` : ''}
@@ -551,7 +577,7 @@ async function adminProducts(main) {
   $$('[data-edit]', main).forEach((b) => b.addEventListener('click', () => editProduct(Number(b.dataset.edit))));
   $$('[data-stock]', main).forEach((b) => b.addEventListener('click', () => stockDialog(products.find((p) => p.id === Number(b.dataset.stock)))));
 }
-const refreshAdmin = () => { if (location.hash.startsWith('#/admin')) router(); };
+const refreshAdmin = () => { if (location.pathname.startsWith('/admin')) router(); };
 
 async function editProduct(id) {
   const p = id ? (await api('GET', `/api/products/${id}`)).product : { name: '', sku: '', category: 'smoked', description: '', name_pl: '', description_pl: '', price: 0, cost: 0, unit: 'кг', min_stock: 0, active: true, featured: false, badge: '', images: [] };
@@ -649,7 +675,7 @@ function renderPhotos(p) {
   }));
 }
 let quietTimer;
-function refreshAdminQuiet() { clearTimeout(quietTimer); quietTimer = setTimeout(() => { if (location.hash.startsWith('#/admin/products')) adminProducts($('#adminMain')); }, 300); }
+function refreshAdminQuiet() { clearTimeout(quietTimer); quietTimer = setTimeout(() => { if (location.pathname.startsWith('/admin/products')) adminProducts($('#adminMain')); }, 300); }
 
 // Сжимаем фото в браузере перед загрузкой
 function resizeImage(file, maxSide, quality) {
@@ -899,6 +925,8 @@ async function adminSheets(main) {
 
 /* ---------------- Запуск ---------------- */
 (async function init() {
+  // Старые ссылки вида shulfish.pl/#/product/3 → shulfish.pl/product/3
+  if (location.hash.startsWith('#/')) history.replaceState(null, '', location.hash.slice(1) + location.search);
   applyStaticI18n();
   $('#year').textContent = new Date().getFullYear();
   saveCart();
@@ -910,7 +938,7 @@ async function adminSheets(main) {
     return;
   }
   updateHeader();
-  $('#accountLink').addEventListener('click', (e) => { if (!state.me) { e.preventDefault(); location.hash = '#/login'; } });
+  $('#accountLink').addEventListener('click', (e) => { if (!state.me) { e.preventDefault(); e.stopPropagation(); navigate('/login'); } });
   router();
   cookieNotice();
 })();

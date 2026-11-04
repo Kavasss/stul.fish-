@@ -188,7 +188,7 @@ test('битые адреса не роняют сервер, обход пап�
     assert.doesNotMatch(body, /SQLite format/, p + ' отдал базу');
   }
   assert.equal(await rawGet('/uploads/shop.db'), 404);
-  assert.equal(await rawGet('/../data/shop.db'), 200); // нормализуется в /data/shop.db → отдаётся index.html, а не база
+  assert.equal(await rawGet('/../data/shop.db'), 404); // нормализуется в /data/shop.db → страница «не найдено», а не база
   const r = await fetch(base + '/../data/shop.db');
   assert.match(await r.text(), /<!doctype html>/i);
   assert.equal(await rawGet('/.git/config'), 404);

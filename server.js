@@ -532,6 +532,8 @@ function applyMovement(product, type, qty, note, user, orderId = null, extra = {
 }
 
 importStockPhotos();
+const { createSeo } = require('./seo.js');
+const seo = createSeo({ db, CATEGORIES, PUBLIC_DIR, SITE_URL: process.env.SITE_URL });
 const { createSheetsSync } = require('./sheets-sync.js');
 const sheets = createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement, audit, tx });
 
@@ -1031,7 +1033,7 @@ const MIME = {
   '.json': 'application/json', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8',
 };
-function serveStatic(req, res, pathname) {
+function serveStatic(req, res, pathname, query) {
   let base = PUBLIC_DIR;
   let rel = pathname;
   if (pathname.startsWith('/uploads/')) {
@@ -1049,9 +1051,12 @@ function serveStatic(req, res, pathname) {
   if (path.relative(base, file).split(path.sep).some((seg) => seg.startsWith('.'))) return send(res, 404, { error: 'Не найдено' });
   fs.stat(file, (err, st) => {
     let target = file;
-    if (err || st.isDirectory()) {
+    if (err || st.isDirectory() || file === path.join(PUBLIC_DIR, 'index.html')) {
       if (base === UPLOAD_DIR) return send(res, 404, { error: 'Не найдено' });
-      target = path.join(PUBLIC_DIR, 'index.html'); // SPA fallback
+      // Страница приложения: index.html с заголовком, описанием и canonical именно этой страницы
+      const page = seo.renderPage(pathname === '/index.html' ? '/' : pathname, query);
+      res.writeHead(page.status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(req.method === 'HEAD' ? undefined : page.html);
     }
     const ext = path.extname(target).toLowerCase();
     res.writeHead(200, {
@@ -1104,7 +1109,9 @@ const server = http.createServer(async (req, res) => {
   const pathname = url.pathname;
   if (!pathname.startsWith('/api/')) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Method not allowed' });
-    try { return serveStatic(req, res, pathname); } catch (e) { console.error(e); return send(res, 500, { error: 'Внутренняя ошибка сервера' }); }
+    if (pathname === '/sitemap.xml') return send(res, 200, seo.sitemap(), { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+    if (pathname === '/robots.txt') return send(res, 200, seo.robots(), { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+    try { return serveStatic(req, res, pathname, url.searchParams); } catch (e) { console.error(e); return send(res, 500, { error: 'Внутренняя ошибка сервера' }); }
   }
   try {
     const r = routes.find((rt) => rt.method === req.method && rt.re.test(pathname));
