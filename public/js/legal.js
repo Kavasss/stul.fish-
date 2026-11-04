@@ -6,14 +6,14 @@
  *   на страницах показывается предупреждение «реквизиты не заполнены».
  */
 const SELLER = {
-  name: '[Название фирмы / ИП (JDG), как в CEIDG или KRS]',
-  nip: '[NIP]',
-  regon: '[REGON]',
-  address: '[ул., дом, индекс, Warszawa]',
+  name: 'Oleh Shuliak',
+  nip: '1251791175',
+  regon: '542299723',
+  address: 'ul. Żurawia 47/49 lok. 4, 00-680 Warszawa',
   email: '[e-mail для клиентов]',
   phone: '[телефон]',
   domain: 'shulfish.pl',
-  updated: '03.11.2026',
+  updated: '04.11.2026',
 };
 
 const legalIncomplete = () => Object.values(SELLER).some((v) => String(v).startsWith('['));
