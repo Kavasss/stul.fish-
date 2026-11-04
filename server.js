@@ -264,7 +264,8 @@ function seed() {
       console.log(`Созданы учётные записи сотрудников. Пароли записаны в ${credFile}`);
     }
   }
-  if (!db.prepare('SELECT 1 FROM products LIMIT 1').get()) {
+  // Демо-каталог — только для разработки и тестов (SEED_DEMO=1). Рабочий магазин стартует с пустым каталогом.
+  if (process.env.SEED_DEMO === '1' && !db.prepare('SELECT 1 FROM products LIMIT 1').get()) {
     const items = [
       ['SF-001', 'Скумбрия горячего копчения', 'smoked', 'Атлантическая скумбрия, копчённая на ольховой щепе. Сочная, с золотистой корочкой.', 69, 41, 'кг', 18, 5, 1, 'ХИТ'],
       ['SF-002', 'Лосось холодного копчения', 'smoked', 'Филе норвежского лосося, слабосолёное, холодного копчения. Нарезка 200 г.', 39, 24, 'уп', 30, 8, 1, ''],
@@ -354,6 +355,24 @@ if (!db.prepare("SELECT 1 FROM settings WHERE key = 'catalog_1kg'").get()) {
     }
     db.prepare("INSERT INTO settings (key, value) VALUES ('catalog_1kg', ?)").run(new Date().toISOString());
   });
+}
+
+/*
+ * Однократная очистка каталога: удаляются все стартовые/демо-товары и их фото.
+ * История склада и заказы сохраняются (в них записаны название и артикул).
+ * Выполняется один раз; новые товары, добавленные после этого, не трогаются.
+ */
+if (process.env.SEED_DEMO !== '1' && !db.prepare("SELECT 1 FROM settings WHERE key = 'catalog_cleared_v1'").get()) {
+  const imgs = db.prepare('SELECT filename FROM product_images').all();
+  const prods = db.prepare('SELECT id, sku, name FROM products').all();
+  tx(() => {
+    for (const p of prods) if (p.sku) db.prepare('INSERT OR REPLACE INTO deleted_skus (sku, pushed) VALUES (?, 0)').run(p.sku);
+    db.prepare('DELETE FROM product_images').run();
+    db.prepare('DELETE FROM products').run();
+    if (prods.length) audit({ id: null, name: 'Система', role: 'auto' }, 'Каталог очищен', `Удалено товаров: ${prods.length}`);
+    db.prepare("INSERT INTO settings (key, value) VALUES ('catalog_cleared_v1', ?)").run(new Date().toISOString());
+  });
+  for (const i of imgs) fs.rm(path.join(UPLOAD_DIR, i.filename), { force: true }, () => {});
 }
 
 /*
