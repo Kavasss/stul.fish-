@@ -1059,6 +1059,39 @@ route('PUT', '/api/orders/:id/total', ({ user, params, body }) => {
   return { order: getOrder(o.id) };
 });
 
+// --- 10% от суммы чека (только администратор) ---
+// Сумма чека = товары (по факт. весу, если задано) + доставка. Отменённые заказы не учитываются.
+function percentReport(from, to) {
+  const rows = db.prepare(`SELECT * FROM orders WHERE status != 'cancelled'
+    AND date(created_at) >= date(?) AND date(created_at) <= date(?) ORDER BY id DESC`).all(from, to).map((o) => {
+    const check = (o.total_final ?? o.total) + (o.delivery === 'pickup' ? 0 : o.delivery_fee || 0);
+    return { id: o.id, date: o.created_at, status: ORDER_STATUSES[o.status] || o.status, check: check / 100, percent: Math.round(check * 0.1) / 100 };
+  });
+  const sum = (k) => Math.round(rows.reduce((s, r) => s + r[k] * 100, 0)) / 100;
+  return { from, to, rows, totals: { orders: rows.length, check: sum('check'), percent: sum('percent') } };
+}
+function needAdmin(user) {
+  need(user);
+  if (user.role !== 'admin') throw new HttpError(403, 'Недостаточно прав');
+}
+route('GET', '/api/reports/percent', ({ user, query }) => {
+  needAdmin(user);
+  return percentReport(...periodFromQuery(query));
+});
+route('GET', '/api/reports/percent.csv', ({ user, query, res }) => {
+  needAdmin(user);
+  const rep = percentReport(...periodFromQuery(query));
+  const num = (n) => String(n).replace('.', ',');
+  const lines = ['"Заказ №";"Дата";"Статус";"Сумма чека, zł";"10%, zł"'];
+  for (const r of rep.rows) lines.push([r.id, `"${r.date.slice(0, 16)}"`, `"${r.status}"`, num(r.check), num(r.percent)].join(';'));
+  lines.push(['"Итого"', '""', `"${rep.totals.orders} заказов"`, num(rep.totals.check), num(rep.totals.percent)].join(';'));
+  send(res, 200, '\ufeff' + lines.join('\r\n'), {
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': `attachment; filename="percent-${rep.from}_${rep.to}.csv"`,
+  });
+  return undefined;
+});
+
 // --- Пользователи ---
 route('GET', '/api/users', ({ user }) => {
   need(user, 'users.manage');

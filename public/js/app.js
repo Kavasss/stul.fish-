@@ -559,12 +559,13 @@ const ADMIN_SECTIONS = [
   ['orders', 'Заказы', 'orders.manage'],
   ['users', 'Сотрудники', 'users.manage'],
   ['sheets', 'Google Таблица', 'users.manage'],
+  ['percent', '10% с заказов', 'admin'],
   ['log', 'Журнал', 'log.view'],
 ];
 async function viewAdmin(section = 'dashboard') {
   if (!state.me) { navigate('/login'); return; }
   if (!isStaff()) { app.innerHTML = '<div class="empty"><div class="big">Доступ запрещён</div>Раздел только для сотрудников.</div>'; return; }
-  const allowed = ADMIN_SECTIONS.filter(([, , p]) => !p || can(p));
+  const allowed = ADMIN_SECTIONS.filter(([, , p]) => !p || (p === 'admin' ? state.me.role === 'admin' : can(p)));
   if (!allowed.find(([k]) => k === section)) section = 'dashboard';
   let stats = {};
   try { stats = await api('GET', '/api/stats'); } catch { /* нет прав на сводку */ }
@@ -577,7 +578,7 @@ async function viewAdmin(section = 'dashboard') {
     <section id="adminMain"></section>
   </div>`;
   const main = $('#adminMain');
-  const views = { dashboard: adminDashboard, products: adminProducts, inventory: adminInventory, movements: adminMovements, orders: adminOrders, users: adminUsers, log: adminLog, sheets: adminSheets };
+  const views = { dashboard: adminDashboard, products: adminProducts, inventory: adminInventory, movements: adminMovements, orders: adminOrders, users: adminUsers, log: adminLog, sheets: adminSheets, percent: adminPercent };
   await views[section](main, stats);
 }
 
@@ -934,6 +935,41 @@ async function adminLog(main) {
 }
 
 /* ---------- Google Таблица ---------- */
+// 10% от суммы чека — только администратор
+async function adminPercent(main) {
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = today.slice(0, 8) + '01';
+  main.innerHTML = `<div class="toolbar"><h2 style="margin:0">10% с заказов</h2>
+    <div class="left">
+      <label class="muted">с <input type="date" class="input" id="pfrom" value="${monthStart}" style="width:auto"></label>
+      <label class="muted">по <input type="date" class="input" id="pto" value="${today}" style="width:auto"></label>
+      <a class="btn sm" id="pcsv">⇩ CSV / Excel</a>
+    </div></div>
+    <p class="muted" style="margin-top:0">Сумма чека — товары (по фактическому весу, если менеджер его вписал) плюс доставка. Отменённые заказы не учитываются.</p>
+    <div id="prep"></div>`;
+  const load = async () => {
+    const from = $('#pfrom').value, to = $('#pto').value;
+    $('#pcsv').href = `/api/reports/percent.csv?from=${from}&to=${to}`;
+    try {
+      const rep = await api('GET', `/api/reports/percent?from=${from}&to=${to}`);
+      $('#prep').innerHTML = `<div class="stats">
+          <div class="stat"><div class="v">${rep.totals.orders}</div><div class="l">Заказов</div></div>
+          <div class="stat"><div class="v">${zl(rep.totals.check)}</div><div class="l">Сумма чеков</div></div>
+          <div class="stat"><div class="v">${zl(rep.totals.percent)}</div><div class="l">10% от суммы</div></div>
+        </div>
+        <div class="table-wrap"><table>
+          <tr><th>Заказ №</th><th>Дата</th><th>Статус</th><th class="num">Сумма чека</th><th class="num">10%</th></tr>
+          ${rep.rows.map((r) => `<tr><td><b>${r.id}</b></td><td class="muted">${fmtDate(r.date)}</td><td>${esc(r.status)}</td>
+            <td class="num">${zl(r.check)}</td><td class="num"><b>${zl(r.percent)}</b></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Заказов за период нет</td></tr>'}
+          ${rep.rows.length ? `<tr><td colspan="3"><b>Итого</b></td><td class="num"><b>${zl(rep.totals.check)}</b></td><td class="num"><b class="price">${zl(rep.totals.percent)}</b></td></tr>` : ''}
+        </table></div>`;
+    } catch (err) { $('#prep').innerHTML = `<div class="panel empty">${esc(err.message)}</div>`; }
+  };
+  $('#pfrom').addEventListener('change', load);
+  $('#pto').addEventListener('change', load);
+  await load();
+}
+
 async function adminSheets(main) {
   const st = await api('GET', '/api/sheets/status');
   const when = (iso) => (iso ? new Date(iso).toLocaleString('ru-RU') : '—');

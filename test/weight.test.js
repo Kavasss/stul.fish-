@@ -54,3 +54,27 @@ test('менеджер задаёт сумму по фактическому в�
   assert.equal((await manager('PUT', `/api/orders/${id}/total`, { total: '' })).data.order.total_final, null);
   assert.equal((await manager('PUT', `/api/orders/${id}/total`, { total: '-5' })).status, 400);
 });
+
+test('таблица 10% — только администратор; считается от суммы чека, отменённые не входят', async () => {
+  const admin = client();
+  const manager = client();
+  const guest = client();
+  await admin('POST', '/api/auth/login', { email: 'admin@shul.fish', password: 'admin-test-pass' });
+  await manager('POST', '/api/auth/login', { email: 'manager@shul.fish', password: 'manager-test-pass' });
+  assert.equal((await guest('GET', '/api/reports/percent')).status, 401);
+  assert.equal((await manager('GET', '/api/reports/percent')).status, 403);
+  assert.equal((await manager('GET', '/api/reports/percent.csv')).status, 403);
+
+  const a = (await guest('POST', '/api/orders', { customer_name: 'A', phone: '+48600100200', delivery: 'pickup', consent: true, items: [{ product_id: 3, qty: 1 }] })).data.order;
+  const b = (await guest('POST', '/api/orders', { customer_name: 'B', phone: '+48600100200', delivery: 'pickup', consent: true, items: [{ product_id: 3, qty: 1 }] })).data.order;
+  await admin('PUT', `/api/orders/${a.id}/total`, { total: '123,45' });
+  await admin('PUT', `/api/orders/${b.id}/status`, { status: 'cancelled' });
+
+  const rep = (await admin('GET', '/api/reports/percent')).data;
+  const rowA = rep.rows.find((r) => r.id === a.id);
+  assert.equal(rowA.check, 123.45);
+  assert.equal(rowA.percent, 12.35);
+  assert.ok(!rep.rows.find((r) => r.id === b.id));
+  const csv = await fetch(base + '/api/reports/percent.csv');
+  assert.equal(csv.status, 401);
+});
