@@ -225,6 +225,7 @@ addColumn('products', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 addColumn('products', 'description_pl', "TEXT NOT NULL DEFAULT ''");
 addColumn('orders', 'lang', "TEXT NOT NULL DEFAULT 'ru'");
 addColumn('orders', 'distance_km', 'REAL');
+addColumn('orders', 'total_final', 'INTEGER'); // сумма по фактическому весу (грош), задаёт менеджер
 addColumn('order_items', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mov_sheet_key ON stock_movements(sheet_key) WHERE sheet_key IS NOT NULL;
 UPDATE stock_movements SET product_sku = COALESCE((SELECT sku FROM products WHERE products.id = stock_movements.product_id), '') WHERE product_sku = '';`);
@@ -984,7 +985,7 @@ function getOrder(id) {
   const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(id));
   if (!o) throw new HttpError(404, 'Заказ не найден');
   const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(o.id).map((i) => ({ ...i, price: i.price / 100 }));
-  return { ...o, total: o.total / 100, status_name: ORDER_STATUSES[o.status], items };
+  return { ...o, total: o.total / 100, total_final: o.total_final == null ? null : o.total_final / 100, status_name: ORDER_STATUSES[o.status], items };
 }
 route('GET', '/api/orders/my', ({ user }) => {
   need(user);
@@ -1020,6 +1021,20 @@ route('PUT', '/api/orders/:id/status', ({ user, params, body }) => {
     audit(user, 'Статус заказа', `№${o.id}: ${ORDER_STATUSES[o.status]} → ${ORDER_STATUSES[status]}`);
   });
   return { order: getOrder(params.id) };
+});
+
+// Фактическая сумма по весу (упаковки 900–1100 г). Пустое значение — сбросить к предварительной.
+route('PUT', '/api/orders/:id/total', ({ user, params, body }) => {
+  need(user, 'orders.manage');
+  const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(params.id));
+  if (!o) throw new HttpError(404, 'Заказ не найден');
+  if (o.status === 'cancelled') throw new HttpError(409, 'Заказ отменён');
+  const raw = String(body.total ?? '').trim().replace(',', '.');
+  const total = raw === '' ? null : money(raw, 'сумма');
+  db.prepare("UPDATE orders SET total_final = ?, sheet_ver = sheet_ver + 1, updated_at = datetime('now') WHERE id = ?").run(total, o.id);
+  sheets.schedule();
+  audit(user, 'Сумма по весу', `№${o.id}: ${o.total / 100} → ${total == null ? 'сброшено' : total / 100 + ' zł'}`);
+  return { order: getOrder(o.id) };
 });
 
 // --- Пользователи ---

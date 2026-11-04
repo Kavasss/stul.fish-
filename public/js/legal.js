@@ -35,9 +35,10 @@ const LEGAL = {
       <h3>2. Товары и цены</h3>
       <p>Магазин продаёт пищевые продукты: копчёную, вяленую и сушёную рыбу, икру и наборы. Цены указаны в польских злотых (zł)
       и являются ценами брутто (с НДС/VAT). Стоимость доставки сообщается до подтверждения заказа.</p>
-      <p>Продукция продаётся упаковками по 1 кг. Цена на сайте указана за упаковку 1 кг. Если товар весовой (например, рыба
-      целиком) и фактический вес упаковки отличается, менеджер согласует окончательную сумму с покупателем по телефону до передачи
-      заказа в доставку. Без согласия покупателя сумма не меняется.</p>
+      <p>Продукция весовая и продаётся упаковками примерно по 1 кг: фактический вес упаковки — от 900 до 1100 г. Цена на сайте
+      указана за 1 кг, поэтому сумма при оформлении заказа предварительная. Окончательная сумма рассчитывается по фактическому весу
+      (цена за 1 кг × вес) и сообщается покупателю менеджером при подтверждении заказа, до заключения договора. Если покупатель
+      не согласен с окончательной суммой, он может отказаться от заказа без каких-либо расходов.</p>
 
       <h3>3. Оформление заказа</h3>
       <p>Заказ можно оформить без регистрации или из личного кабинета. Чтобы оформить заказ, нужно указать имя, телефон и, для доставки,
@@ -92,9 +93,10 @@ const LEGAL = {
       <h3>§ 2. Produkty i ceny</h3>
       <p>Sklep sprzedaje środki spożywcze: ryby wędzone, suszone, przekąski rybne, ikrę oraz zestawy. Ceny podawane są
       w złotych polskich (zł) i są cenami brutto (zawierają podatek VAT). Koszt dostawy jest podawany przed potwierdzeniem zamówienia.</p>
-      <p>Produkty sprzedawane są w opakowaniach po 1 kg, a cena w Sklepie dotyczy opakowania 1 kg. Jeżeli rzeczywista waga
-      produktu sprzedawanego na wagę (np. ryby w całości) różni się od nominalnej, konsultant uzgadnia z Klientem ostateczną kwotę
-      telefonicznie przed przekazaniem zamówienia do dostawy. Bez zgody Klienta kwota zamówienia nie ulega zmianie.</p>
+      <p>Produkty sprzedawane są na wagę, w opakowaniach ok. 1 kg — rzeczywista waga opakowania wynosi od 900 do 1100 g. Cena
+      w Sklepie dotyczy 1 kg, dlatego kwota podana przy składaniu zamówienia jest orientacyjna. Ostateczna kwota obliczana jest
+      według rzeczywistej wagi (cena za 1 kg × waga) i przekazywana Klientowi przez konsultanta przy potwierdzeniu zamówienia,
+      przed zawarciem umowy. Jeżeli Klient nie akceptuje ostatecznej kwoty, może zrezygnować z zamówienia bez ponoszenia kosztów.</p>
 
       <h3>§ 3. Składanie zamówień</h3>
       <p>Zamówienie można złożyć bez rejestracji lub po zalogowaniu na konto. W tym celu należy podać imię, numer telefonu oraz —

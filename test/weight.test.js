@@ -1,0 +1,56 @@
+'use strict';
+const { test, before, after } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shulfish-weight-'));
+process.env.SEED_DEMO = '1';
+process.env.GEOCODER_URL = 'off';
+process.env.ADMIN_PASSWORD = 'admin-test-pass';
+process.env.MANAGER_PASSWORD = 'manager-test-pass';
+const { server } = require('../server.js');
+let base;
+before(() => new Promise((r) => server.listen(0, () => { base = `http://127.0.0.1:${server.address().port}`; r(); })));
+after(() => new Promise((r) => server.close(r)));
+
+function client() {
+  let cookie = '';
+  return async (method, url, body) => {
+    const res = await fetch(base + url, {
+      method,
+      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const sc = res.headers.get('set-cookie');
+    if (sc) cookie = sc.split(';')[0];
+    return { status: res.status, data: await res.json() };
+  };
+}
+
+test('менеджер задаёт сумму по фактическому весу, покупатель её видит', async () => {
+  const guest = client();
+  const manager = client();
+  const customer = client();
+  await customer('POST', '/api/auth/register', { email: 'w@example.com', name: 'W', password: '12345678', consent: true });
+  const o = await customer('POST', '/api/orders', { customer_name: 'W', phone: '+48600100200', delivery: 'pickup', consent: true, items: [{ product_id: 3, qty: 2 }] });
+  assert.equal(o.status, 200);
+  const id = o.data.order.id;
+  assert.equal(o.data.order.total_final, null);
+
+  assert.equal((await guest('PUT', `/api/orders/${id}/total`, { total: '1' })).status, 401);
+  assert.equal((await customer('PUT', `/api/orders/${id}/total`, { total: '1' })).status, 403);
+
+  await manager('POST', '/api/auth/login', { email: 'manager@shul.fish', password: 'manager-test-pass' });
+  const r = await manager('PUT', `/api/orders/${id}/total`, { total: '123,45' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.order.total_final, 123.45);
+
+  const mine = await customer('GET', '/api/orders/my');
+  assert.equal(mine.data.orders[0].total_final, 123.45);
+
+  // пустое значение — сброс к предварительной сумме
+  assert.equal((await manager('PUT', `/api/orders/${id}/total`, { total: '' })).data.order.total_final, null);
+  assert.equal((await manager('PUT', `/api/orders/${id}/total`, { total: '-5' })).status, 400);
+});

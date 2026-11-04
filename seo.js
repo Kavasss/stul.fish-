@@ -10,11 +10,11 @@ const path = require('node:path');
 
 const T = {
   ru: {
-    home: ['SHUL.FISH — копчёная, вяленая рыба и икра в Варшаве', 'SHUL.FISH — премиальная копчёная, вяленая и сушёная рыба, красная и чёрная икра. Упаковки по 1 кг, доставка по Варшаве в день заказа.'],
-    catalog: ['Каталог рыбы и икры — SHUL.FISH', 'Копчёная, вяленая и сушёная рыба, красная и чёрная икра с доставкой по Варшаве. Упаковки по 1 кг.'],
-    category: (c) => [`${c} — купить в Варшаве | SHUL.FISH`, `${c} с доставкой по Варшаве. Фасовка по 1 кг, премиальное качество.`],
+    home: ['SHUL.FISH — копчёная, вяленая рыба и икра в Варшаве', 'SHUL.FISH — премиальная копчёная, вяленая и сушёная рыба, красная и чёрная икра. Упаковки ≈1 кг, доставка по Варшаве в день заказа.'],
+    catalog: ['Каталог рыбы и икры — SHUL.FISH', 'Копчёная, вяленая и сушёная рыба, красная и чёрная икра с доставкой по Варшаве. Упаковки ≈1 кг, цена за 1 кг.'],
+    category: (c) => [`${c} — купить в Варшаве | SHUL.FISH`, `${c} с доставкой по Варшаве. Упаковки ≈1 кг, премиальное качество.`],
     product: (n, price) => `${n} — ${price} zł/кг | SHUL.FISH`,
-    productTail: 'Упаковка 1 кг. Доставка по Варшаве.',
+    productTail: 'Упаковка ≈1 кг (900–1100 г), цена за 1 кг. Доставка по Варшаве.',
     delivery: ['Доставка и оплата — SHUL.FISH', 'Доставка по Варшаве курьером в день заказа, самовывоз, оплата наличными, картой, BLIK или переводом.'],
     terms: ['Правила магазина — SHUL.FISH', 'Правила интернет-магазина SHUL.FISH: заказ, оплата, доставка, возврат и рекламации.'],
     privacy: ['Политика конфиденциальности — SHUL.FISH', 'Как SHUL.FISH обрабатывает и защищает персональные данные покупателей (RODO/GDPR).'],
@@ -23,11 +23,11 @@ const T = {
     cats: { smoked: 'Копчёная рыба', cured: 'Вяленая рыба', dried: 'Сушёная рыба', caviar: 'Икра', sets: 'Наборы' },
   },
   pl: {
-    home: ['SHUL.FISH — ryby wędzone, suszone i ikra w Warszawie', 'SHUL.FISH — ryby wędzone, suszone i przekąski rybne premium, ikra czerwona i kawior. Opakowania po 1 kg, dostawa w Warszawie w dniu zamówienia.'],
-    catalog: ['Katalog ryb i ikry — SHUL.FISH', 'Ryby wędzone, suszone, przekąski rybne, ikra i kawior z dostawą w Warszawie. Opakowania po 1 kg.'],
-    category: (c) => [`${c} — kup w Warszawie | SHUL.FISH`, `${c} z dostawą w Warszawie. Opakowania po 1 kg, jakość premium.`],
+    home: ['SHUL.FISH — ryby wędzone, suszone i ikra w Warszawie', 'SHUL.FISH — ryby wędzone, suszone i przekąski rybne premium, ikra czerwona i kawior. Opakowania ok. 1 kg, dostawa w Warszawie w dniu zamówienia.'],
+    catalog: ['Katalog ryb i ikry — SHUL.FISH', 'Ryby wędzone, suszone, przekąski rybne, ikra i kawior z dostawą w Warszawie. Opakowania ok. 1 kg, cena za 1 kg.'],
+    category: (c) => [`${c} — kup w Warszawie | SHUL.FISH`, `${c} z dostawą w Warszawie. Opakowania ok. 1 kg, jakość premium.`],
     product: (n, price) => `${n} — ${price} zł/kg | SHUL.FISH`,
-    productTail: 'Opakowanie 1 kg. Dostawa w Warszawie.',
+    productTail: 'Opakowanie ok. 1 kg (900–1100 g), cena za 1 kg. Dostawa w Warszawie.',
     delivery: ['Dostawa i płatność — SHUL.FISH', 'Dostawa kurierem w Warszawie w dniu zamówienia, odbiór osobisty, płatność gotówką, kartą, BLIK lub przelewem.'],
     terms: ['Regulamin sklepu — SHUL.FISH', 'Regulamin sklepu internetowego SHUL.FISH: zamówienia, płatności, dostawa, odstąpienie od umowy i reklamacje.'],
     privacy: ['Polityka prywatności — SHUL.FISH', 'Jak SHUL.FISH przetwarza i chroni dane osobowe klientów (RODO).'],

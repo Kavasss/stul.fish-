@@ -369,6 +369,7 @@ function viewCart() {
       </div>
       <label class="field">${t('cart.comment')}<textarea class="input" name="comment" placeholder="${esc(t('cart.commentPh'))}"></textarea></label>
       <div class="total-line big"><span>${t('cart.total')}</span><b id="total"></b></div>
+      <p class="muted" style="margin:-6px 0 0;font-size:13px">${t('cart.weightNote')}</p>
       ${consentBox()}
       <button class="btn primary" type="submit">${t('cart.order')}</button>
       ${state.me ? '' : `<p class="muted" style="margin:0;font-size:13px">${t('cart.loginHint')}</p>`}
@@ -495,7 +496,13 @@ function orderCard(o, manage = false) {
     </div>
     ${manage ? `<div class="muted" style="font-size:14px">${esc(o.customer_name)} · <a href="tel:${esc(o.phone)}" style="color:var(--gold-2)">${esc(o.phone)}</a>${o.email ? ' · ' + esc(o.email) : ''}${o.lang === 'pl' ? ' · 🇵🇱 PL' : ''}<br>${o.delivery === 'pickup' ? 'Самовывоз' : 'Курьер: ' + esc(o.address) + (o.distance_km != null ? ` · ${o.distance_km} км` : ' · <span style="color:var(--warn)">расстояние не проверено</span>')}${o.comment ? `<br>💬 ${esc(o.comment)}` : ''}</div>` : ''}
     <ul class="order-items">${o.items.map((i) => `<li>${esc(manage ? i.name : (LANG === 'pl' && i.name_pl) || i.name)} — ${fmtQty(i.qty)} ${esc(manage ? i.unit : unitName(i.unit))} × ${zl(i.price)}</li>`).join('')}</ul>
-    <div class="total-line"><span class="muted">${tt('order.sum')}</span><b class="price" style="font-size:20px">${zl(o.total)}</b></div>
+    ${o.total_final != null
+      ? `<div class="total-line"><span class="muted">${tt('order.sumEst')}</span><span class="muted">${zl(o.total)}</span></div>
+         <div class="total-line"><span class="muted">${tt('order.sumFinal')}</span><b class="price" style="font-size:20px">${zl(o.total_final)}</b></div>`
+      : `<div class="total-line"><span class="muted">${tt(o.status === 'new' ? 'order.sumEst' : 'order.sum')}</span><b class="price" style="font-size:20px">${zl(o.total)}</b></div>`}
+    ${manage && o.status !== 'cancelled' ? `<form class="form-row" data-final="${o.id}" style="margin-top:8px;align-items:end">
+      <label class="field" style="margin:0">Сумма по факт. весу, zł<input class="input" name="total" inputmode="decimal" placeholder="${o.total}" value="${o.total_final ?? ''}"></label>
+      <button class="btn" type="submit">Сохранить</button></form>` : ''}
   </div>`;
 }
 
@@ -799,6 +806,11 @@ async function adminOrders(main) {
   const load = async () => {
     const { orders } = await api('GET', '/api/orders' + (current ? `?status=${current}` : ''));
     $('#olist').innerHTML = orders.length ? orders.map((o) => orderCard(o, true)).join('') : '<div class="panel empty">Заказов нет</div>';
+    $$('[data-final]', main).forEach((f) => f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try { await api('PUT', `/api/orders/${f.dataset.final}/total`, { total: f.total.value }); toast('Сумма по весу сохранена'); load(); }
+      catch (err) { toast(err.message, true); }
+    }));
     $$('[data-status]', main).forEach((s) => s.addEventListener('change', async () => {
       if (s.value === 'cancelled' && !confirm('Отменить заказ? Товар будет возвращён на склад.')) { load(); return; }
       try { await api('PUT', `/api/orders/${s.dataset.status}/status`, { status: s.value }); toast('Статус обновлён'); load(); }
