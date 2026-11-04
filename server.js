@@ -454,7 +454,7 @@ if (!db.prepare("SELECT 1 FROM settings WHERE key = 'mackerel_piece_v1'").get())
 }
 // v2: на рабочем сайте у скумбрии единицу успели сменить на «кг» — v1 её пропустил.
 // Скумбрия продаётся поштучно: единица «шт», вес 1 шт. ≈ 0,5 кг, цена остаётся за 1 кг.
-if (!db.prepare("SELECT 1 FROM settings WHERE key = 'mackerel_piece_v2'").get()) {
+if (process.env.SEED_DEMO !== '1' && !db.prepare("SELECT 1 FROM settings WHERE key = 'mackerel_piece_v2'").get()) {
   const p = db.prepare("SELECT * FROM products WHERE sku = 'SF-001'").get();
   if (p && p.piece_weight == null) {
     db.prepare("UPDATE products SET piece_weight = 0.5, unit = 'шт', updated_at = datetime('now') WHERE id = ?").run(p.id);
