@@ -452,6 +452,16 @@ if (!db.prepare("SELECT 1 FROM settings WHERE key = 'mackerel_piece_v1'").get())
   }
   db.prepare("INSERT INTO settings (key, value) VALUES ('mackerel_piece_v1', ?)").run(new Date().toISOString());
 }
+// v2: на рабочем сайте у скумбрии единицу успели сменить на «кг» — v1 её пропустил.
+// Скумбрия продаётся поштучно: единица «шт», вес 1 шт. ≈ 0,5 кг, цена остаётся за 1 кг.
+if (!db.prepare("SELECT 1 FROM settings WHERE key = 'mackerel_piece_v2'").get()) {
+  const p = db.prepare("SELECT * FROM products WHERE sku = 'SF-001'").get();
+  if (p && p.piece_weight == null) {
+    db.prepare("UPDATE products SET piece_weight = 0.5, unit = 'шт', updated_at = datetime('now') WHERE id = ?").run(p.id);
+    audit({ id: null, name: 'Система', role: 'auto' }, 'Поштучная продажа', `#${p.id} ${p.name}: единица ${p.unit} → шт, цена за кг, ≈0,5 кг/шт (остаток ${p.stock} — проверьте, что это штуки)`);
+  }
+  db.prepare("INSERT INTO settings (key, value) VALUES ('mackerel_piece_v2', ?)").run(new Date().toISOString());
+}
 const ordersPaused = () => db.prepare("SELECT value FROM settings WHERE key = 'orders_paused'").get()?.value === '1';
 
 if (!db.prepare("SELECT 1 FROM settings WHERE key = 'sku_unify_v1'").get()) {
