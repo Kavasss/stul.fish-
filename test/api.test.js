@@ -88,7 +88,7 @@ test('заказ списывает остаток, отмена возвращ�
   assert.equal(o.status, 200, JSON.stringify(o.data));
   assert.equal((await manager('GET', '/api/products/1')).data.product.stock, before - 2);
   assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 1, qty: 0.5 }] })).status, 400);
-  assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 1, qty: 999 }] })).status, 409);
+  assert.equal((await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 1, qty: 99 }] })).status, 409);
   const c = await manager('PUT', `/api/orders/${o.data.order.id}/status`, { status: 'cancelled' });
   assert.equal(c.data.order.status, 'cancelled');
   assert.equal((await manager('GET', '/api/products/1')).data.product.stock, before);
@@ -159,7 +159,7 @@ test('гость не видит точные остатки, видимость
 });
 
 test('ошибка заказа не раскрывает остаток склада', async () => {
-  const r = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 2, qty: 999 }] });
+  const r = await guest('POST', '/api/orders', { customer_name: 'Иван', phone: '+48600100200', address: 'x', consent: true, items: [{ product_id: 2, qty: 99 }] });
   assert.equal(r.status, 409);
   assert.doesNotMatch(r.data.error, /\d+\s*(уп|кг|шт|банка)|остаток/);
 });

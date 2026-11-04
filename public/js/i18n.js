@@ -163,6 +163,8 @@ const SERVER_ERRORS_PL = [
   [/^Товар не найден$/, 'Nie znaleziono produktu'],
   [/^Товара «(.+)» нет в таком количестве.*/, 'Produktu „$1” nie ma w takiej ilości. Zmniejsz ilość lub skontaktuj się z nami.'],
   [/^Количество «(.+)» — только целое число упаковок$/, 'Ilość produktu „$1” — tylko pełne opakowania'],
+  [/^Количество «(.+)» — не больше (\d+)\. Для оптового заказа позвоните нам\.$/, 'Ilość produktu „$1” — maksymalnie $2. W sprawie zamówień hurtowych prosimy o telefon.'],
+  [/^Пароль должен быть не длиннее (\d+) символов$/, 'Hasło może mieć maksymalnie $1 znaków'],
   [/^Некорректное .*/, 'Nieprawidłowa wartość'],
   [/^Требуется вход$/, 'Wymagane zalogowanie'],
   [/^Недостаточно прав$/, 'Brak uprawnień'],

@@ -16,7 +16,10 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const SESSION_DAYS = 14;
-const MAX_BODY = 8 * 1024 * 1024;
+const MAX_BODY = 8 * 1024 * 1024;        // только для загрузки фото
+const MAX_JSON_BODY = 64 * 1024;         // все остальные запросы
+const MAX_PASSWORD = 256;
+const MAX_GUEST_QTY = 100;               // максимум упаковок одной позиции в заказе покупателя
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const db = new DatabaseSync(path.join(DATA_DIR, 'shop.db'));
@@ -450,13 +453,14 @@ function createSession(req, res, userId) {
   res.setHeader('Set-Cookie', `sid=${token}; ${cookieAttrs(req)}; Max-Age=${SESSION_DAYS * 86400}`);
   return token;
 }
-function readBody(req) {
+function readBody(req, limit = MAX_JSON_BODY) {
   return new Promise((resolve, reject) => {
+    if (Number(req.headers['content-length']) > limit) { reject(new HttpError(413, 'Слишком большой запрос')); req.resume(); return; }
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > MAX_BODY) { reject(new HttpError(413, 'Слишком большой запрос')); req.destroy(); return; }
+      if (size > limit) { reject(new HttpError(413, 'Слишком большой запрос')); req.destroy(); return; }
       chunks.push(c);
     });
     req.on('end', () => {
@@ -492,7 +496,9 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, v] of rateBuckets) if (now - v.t > 3600e3) rateBuckets.delete(k);
 }, 600e3).unref();
-const clientIp = (req) => (process.env.TRUST_PROXY === '1' && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress || '';
+// Берём ПОСЛЕДНИЙ адрес из X-Forwarded-For — его дописал наш прокси (Caddy).
+// Первые адреса присылает сам клиент, и подделать их может кто угодно.
+const clientIp = (req) => (process.env.TRUST_PROXY === '1' && String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean).pop()) || req.socket.remoteAddress || '';
 // Одинаковое время ответа для существующего и несуществующего e-mail
 const DUMMY_HASH = hashPassword(crypto.randomBytes(16).toString('hex'));
 
@@ -582,6 +588,7 @@ route('POST', '/api/auth/register', ({ body, req, res }) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Укажите корректный e-mail');
   if (!name) throw new HttpError(400, 'Укажите имя');
   if (password.length < 8) throw new HttpError(400, 'Пароль должен быть не короче 8 символов');
+  if (password.length > MAX_PASSWORD) throw new HttpError(400, `Пароль должен быть не длиннее ${MAX_PASSWORD} символов`);
   if (body.consent !== true) throw new HttpError(400, 'Нужно принять правила магазина и политику конфиденциальности');
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new HttpError(409, 'Такой e-mail уже зарегистрирован');
   const r = db.prepare("INSERT INTO users (email,name,phone,role,password_hash,consent_at) VALUES (?,?,?,'customer',?,datetime('now'))")
@@ -594,10 +601,19 @@ route('POST', '/api/auth/login', ({ body, res, req }) => {
   const email = str(body.email, 120).toLowerCase();
   const tooMany = 'Слишком много попыток входа. Попробуйте через 15 минут.';
   rateLimit('login-ip', clientIp(req), 20, 15 * 60e3, tooMany);
-  rateLimit('login-email', email, 10, 15 * 60e3, tooMany); // защита конкретного аккаунта от перебора с разных IP
+  // Защита конкретного аккаунта от перебора с разных IP: считаем только неудачные попытки
+  const failKey = `login-fail:${email}`;
+  const fails = rateBuckets.get(failKey);
+  if (fails && Date.now() - fails.t <= 15 * 60e3 && fails.n >= 10) throw new HttpError(429, tooMany);
+  const password = String(body.password || '');
+  if (password.length > MAX_PASSWORD) throw new HttpError(401, 'Неверный e-mail или пароль');
   const u = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  const ok = verifyPassword(String(body.password || ''), u ? u.password_hash : DUMMY_HASH);
-  if (!u || !ok) throw new HttpError(401, 'Неверный e-mail или пароль');
+  const ok = verifyPassword(password, u ? u.password_hash : DUMMY_HASH);
+  if (!u || !ok) {
+    try { rateLimit('login-fail', email, Infinity, 15 * 60e3, tooMany); } catch {}
+    throw new HttpError(401, 'Неверный e-mail или пароль');
+  }
+  rateBuckets.delete(failKey);
   if (!u.active) throw new HttpError(403, 'Учётная запись заблокирована');
   createSession(req, res, u.id);
   if (u.role !== 'customer') audit(u, 'Вход в систему');
@@ -615,6 +631,7 @@ route('PUT', '/api/me', ({ user, body, req, res }) => {
   if (body.new_password) {
     if (!verifyPassword(String(body.old_password || ''), user.password_hash)) throw new HttpError(400, 'Текущий пароль указан неверно');
     if (String(body.new_password).length < 8) throw new HttpError(400, 'Новый пароль должен быть не короче 8 символов');
+    if (String(body.new_password).length > MAX_PASSWORD) throw new HttpError(400, `Пароль должен быть не длиннее ${MAX_PASSWORD} символов`);
   }
   const name = str(body.name, 80) || user.name;
   db.prepare('UPDATE users SET name = ?, phone = ? WHERE id = ?').run(name, str(body.phone, 30), user.id);
@@ -731,7 +748,7 @@ const IMAGE_SIGS = [
   { ext: 'png', test: (b) => b.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
   { ext: 'webp', test: (b) => b.slice(0, 4).toString() === 'RIFF' && b.slice(8, 12).toString() === 'WEBP' },
 ];
-route('POST', '/api/products/:id/images', ({ user, params, body }) => {
+route('POST', '/api/products/:id/images', { maxBody: MAX_BODY }, ({ user, params, body }) => {
   need(user, 'photos.manage');
   const p = getProductRow(params.id);
   const m = /^data:image\/[a-z+]+;base64,(.+)$/s.exec(String(body.data || ''));
@@ -888,6 +905,7 @@ route('POST', '/api/orders', ({ user, body, req }) => {
       // Вся продукция продаётся упаковками по 1 кг (или поштучно) — только целое количество
       const qty = round3(num(it.qty, { min: 1, max: 1000, name: 'количество' }));
       if (!Number.isInteger(qty)) throw new HttpError(400, `Количество «${p.name}» — только целое число упаковок`);
+      if (!seesStock(user) && qty > MAX_GUEST_QTY) throw new HttpError(400, `Количество «${p.name}» — не больше ${MAX_GUEST_QTY}. Для оптового заказа позвоните нам.`);
       applyMovement(p, 'sale', -qty, `Заказ №${oid}`, user, oid);
       db.prepare('INSERT INTO order_items (order_id,product_id,name,name_pl,unit,price,qty) VALUES (?,?,?,?,?,?,?)').run(oid, p.id, p.name, p.name_pl || '', p.unit, p.price, qty);
       total += Math.round(p.price * qty);
@@ -951,6 +969,7 @@ route('POST', '/api/users', ({ user, body }) => {
   const role = ['admin', 'manager', 'customer'].includes(body.role) ? body.role : 'manager';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Укажите корректный e-mail');
   if (String(body.password || '').length < 8) throw new HttpError(400, 'Пароль должен быть не короче 8 символов');
+  if (String(body.password).length > MAX_PASSWORD) throw new HttpError(400, `Пароль должен быть не длиннее ${MAX_PASSWORD} символов`);
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new HttpError(409, 'Такой e-mail уже существует');
   const perms = Array.isArray(body.permissions) ? body.permissions.filter((p) => PERMISSIONS[p] && !ADMIN_ONLY.includes(p)) : DEFAULT_MANAGER_PERMS;
   const r = db.prepare('INSERT INTO users (email,name,phone,role,password_hash,permissions) VALUES (?,?,?,?,?,?)')
@@ -981,6 +1000,7 @@ route('PUT', '/api/users/:id', ({ user, params, body }) => {
   if ('name' in body && str(body.name, 80)) { db.prepare('UPDATE users SET name = ? WHERE id = ?').run(str(body.name, 80), target.id); changes.push('имя'); }
   if (body.password) {
     if (String(body.password).length < 8) throw new HttpError(400, 'Пароль должен быть не короче 8 символов');
+    if (String(body.password).length > MAX_PASSWORD) throw new HttpError(400, `Пароль должен быть не длиннее ${MAX_PASSWORD} символов`);
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(String(body.password)), target.id);
     db.prepare('DELETE FROM sessions WHERE user_id = ? ').run(target.id);
     changes.push('пароль сброшен');
@@ -1078,8 +1098,10 @@ function serveStatic(req, res, pathname, query) {
       return res.end(req.method === 'HEAD' ? undefined : page.html);
     }
     const ext = path.extname(target).toLowerCase();
+    // Служебные файлы (README.md и т.п.) наружу не отдаём — только известные типы
+    if (!MIME[ext]) return send(res, 404, { error: 'Не найдено' });
     res.writeHead(200, {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Content-Type': MIME[ext],
       'Cache-Control': base === UPLOAD_DIR ? 'public, max-age=31536000, immutable' : 'no-cache',
     });
     if (req.method === 'HEAD') return res.end();
@@ -1143,7 +1165,7 @@ const server = http.createServer(async (req, res) => {
     let params;
     try { params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])])); }
     catch { throw new HttpError(400, 'Некорректный адрес'); }
-    const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readBody(req);
+    const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readBody(req, r.maxBody || MAX_JSON_BODY);
     const user = getUser(req);
     const result = await r.handler({ req, res, user, params, body, query: url.searchParams });
     if (result !== undefined && !res.headersSent) send(res, 200, result);
