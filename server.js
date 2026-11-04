@@ -232,6 +232,9 @@ addColumn('orders', 'distance_km', 'REAL');
 addColumn('orders', 'total_final', 'INTEGER'); // сумма по фактическому весу (грош), задаёт менеджер
 addColumn('orders', 'delivery_fee', 'INTEGER'); // стоимость доставки (грош); NULL — не рассчитана, уточнит менеджер
 addColumn('order_items', 'name_pl', "TEXT NOT NULL DEFAULT ''");
+// Поштучная продажа по цене за кг: piece_weight — примерный вес 1 шт., кг. NULL — обычный товар (цена за единицу).
+addColumn('products', 'piece_weight', 'REAL');
+addColumn('order_items', 'piece_weight', 'REAL');
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mov_sheet_key ON stock_movements(sheet_key) WHERE sheet_key IS NOT NULL;
 UPDATE stock_movements SET product_sku = COALESCE((SELECT sku FROM products WHERE products.id = stock_movements.product_id), '') WHERE product_sku = '';`);
 
@@ -440,6 +443,14 @@ if (process.env.SEED_DEMO !== '1' && !db.prepare("SELECT 1 FROM settings WHERE k
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('orders_paused', '1')").run();
   db.prepare("INSERT INTO settings (key, value) VALUES ('orders_pause_init_v1', ?)").run(new Date().toISOString());
 }
+if (!db.prepare("SELECT 1 FROM settings WHERE key = 'mackerel_piece_v1'").get()) {
+  const p = db.prepare("SELECT * FROM products WHERE sku = 'SF-001'").get();
+  if (p && p.unit === 'шт' && p.piece_weight == null) {
+    db.prepare("UPDATE products SET piece_weight = 0.5, updated_at = datetime('now') WHERE id = ?").run(p.id);
+    audit({ id: null, name: 'Система', role: 'auto' }, 'Поштучная продажа', `#${p.id} ${p.name}: цена за кг, ≈0,5 кг/шт`);
+  }
+  db.prepare("INSERT INTO settings (key, value) VALUES ('mackerel_piece_v1', ?)").run(new Date().toISOString());
+}
 const ordersPaused = () => db.prepare("SELECT value FROM settings WHERE key = 'orders_paused'").get()?.value === '1';
 
 if (!db.prepare("SELECT 1 FROM settings WHERE key = 'sku_unify_v1'").get()) {
@@ -596,7 +607,7 @@ function shapeProduct(p, imgs, user) {
   const out = {
     id: p.id, sku: p.sku, name: p.name, category: p.category, category_name: CATEGORIES[p.category] || p.category,
     description: p.description, name_pl: p.name_pl, description_pl: p.description_pl, price: p.price / 100, unit: p.unit,
-    in_stock: p.stock > 0, featured: !!p.featured, badge: p.badge,
+    in_stock: p.stock > 0, featured: !!p.featured, badge: p.badge, piece_weight: p.piece_weight ?? null,
     images: imgs[p.id] || [],
   };
   // Точные остатки, видимость и даты изменения — только сотрудникам
@@ -762,6 +773,10 @@ function productFields(body, user, existing) {
   if ('description_pl' in body) f.description_pl = str(body.description_pl, 3000);
   if ('unit' in body) { if (!UNITS.includes(body.unit)) throw new HttpError(400, 'Неизвестная единица'); f.unit = body.unit; }
   if ('min_stock' in body) f.min_stock = round3(num(body.min_stock, { min: 0, max: 1e6, name: 'минимальный остаток' }));
+  if ('piece_weight' in body) {
+    const raw = String(body.piece_weight ?? '').trim().replace(',', '.');
+    f.piece_weight = raw === '' || Number(raw) === 0 ? null : round3(num(raw, { min: 0.01, max: 50, name: 'вес 1 шт.' }));
+  }
   if ('active' in body) f.active = body.active ? 1 : 0;
   if ('featured' in body) f.featured = body.featured ? 1 : 0;
   if ('badge' in body) f.badge = str(body.badge, 16);
@@ -1012,8 +1027,9 @@ route('POST', '/api/orders', async ({ user, body, req }) => {
       if (!Number.isInteger(qty)) throw new HttpError(400, `Количество «${p.name}» — только целое число упаковок`);
       if (!seesStock(user) && qty > MAX_GUEST_QTY) throw new HttpError(400, `Количество «${p.name}» — не больше ${MAX_GUEST_QTY}. Для оптового заказа позвоните нам.`);
       applyMovement(p, 'sale', -qty, `Заказ №${oid}`, user, oid);
-      db.prepare('INSERT INTO order_items (order_id,product_id,name,name_pl,unit,price,qty) VALUES (?,?,?,?,?,?,?)').run(oid, p.id, p.name, p.name_pl || '', p.unit, p.price, qty);
-      total += Math.round(p.price * qty);
+      db.prepare('INSERT INTO order_items (order_id,product_id,name,name_pl,unit,price,qty,piece_weight) VALUES (?,?,?,?,?,?,?,?)').run(oid, p.id, p.name, p.name_pl || '', p.unit, p.price, qty, p.piece_weight ?? null);
+      // поштучно по цене за кг: штуки × примерный вес × цена за кг (точную сумму по весу задаёт менеджер)
+      total += Math.round(p.price * qty * (p.piece_weight || 1));
     }
     db.prepare('UPDATE orders SET total = ? WHERE id = ?').run(total, oid);
     return oid;

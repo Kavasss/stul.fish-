@@ -50,12 +50,16 @@ function saveCart() {
   $('#cartCount').textContent = count;
   $('#cartCount').classList.toggle('hidden', count === 0);
 }
+// Подпись цены: обычный товар — за единицу, поштучный по весу — за 1 кг
+const priceUnit = (p) => (p.piece_weight ? t('p.perKg') : unitName(p.unit));
+const pieceG = (p) => Math.round(p.piece_weight * 1000);
+const lineSum = (i) => Math.round(i.price * i.qty * (i.piece_weight || 1) * 100) / 100;
 function addToCart(p, qty) {
   const step = stepFor(p.unit);
   qty = qty || step;
   const item = state.cart.find((i) => i.id === p.id);
   if (item) item.qty = Math.round((item.qty + qty) * 1000) / 1000;
-  else state.cart.push({ id: p.id, name: p.name, name_pl: p.name_pl || '', unit: p.unit, price: p.price, image: p.images[0]?.url || null, category: p.category, qty });
+  else state.cart.push({ id: p.id, name: p.name, name_pl: p.name_pl || '', unit: p.unit, price: p.price, piece_weight: p.piece_weight || null, image: p.images[0]?.url || null, category: p.category, qty });
   saveCart();
   toast(t('cart.added', { name: pName(p) }));
 }
@@ -195,7 +199,7 @@ function productCard(p) {
       <a href="/product/${p.id}" class="card-title">${esc(pName(p))}</a>
       <div class="card-desc">${esc(pDesc(p))}</div>
       <div class="card-foot">
-        <div class="price">${zl(p.price)} <small>/ ${esc(unitName(p.unit))}</small></div>
+        <div class="price">${zl(p.price)} <small>/ ${esc(priceUnit(p))}</small></div>
         <button class="btn sm primary" data-add="${p.id}" ${p.in_stock ? '' : 'disabled'}>${p.in_stock ? t('card.toCart') : t('card.none')}</button>
       </div>
     </div>
@@ -295,12 +299,12 @@ async function viewProduct(id) {
       <div>
         <div class="card-cat">${esc(catName(p.category))}</div>
         <h1>${esc(pName(p))}</h1>
-        <div class="price" style="font-size:34px;margin:10px 0 16px">${zl(p.price)} <small>/ ${esc(unitName(p.unit))}</small></div>
+        <div class="price" style="font-size:34px;margin:10px 0 16px">${zl(p.price)} <small>/ ${esc(priceUnit(p))}</small></div>
         <p style="white-space:pre-line">${esc(pDesc(p))}</p>
         <dl class="kv" style="margin:18px 0">
           <dt>${t('p.sku')}</dt><dd>${esc(p.sku || '—')}</dd>
           <dt>${t('p.availability')}</dt><dd>${p.in_stock ? `<span class="st ok">${t('p.inStock')}</span>` : `<span class="st out">${t('p.outOfStock')}</span>`}</dd>
-          ${p.unit === 'кг' ? `<dt>${t('p.step')}</dt><dd>${t('p.stepKg')}</dd>` : ''}
+          ${p.piece_weight ? `<dt>${t('p.step')}</dt><dd>${esc(t('p.stepPiece', { g: pieceG(p) }))}</dd>` : p.unit === 'кг' ? `<dt>${t('p.step')}</dt><dd>${t('p.stepKg')}</dd>` : ''}
         </dl>
         ${p.in_stock ? `<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
           <div class="qty"><button id="minus">−</button><input id="qty" value="${step}" inputmode="decimal"><button id="plus">+</button></div>
@@ -342,7 +346,7 @@ function viewDelivery() {
 
 /* ---------------- Корзина и оформление ---------------- */
 const consentBox = () => `<label class="check consent"><input type="checkbox" name="consent" required> <span>${t('consent')}</span></label>`;
-function cartTotal() { return state.cart.reduce((s, i) => s + i.price * i.qty, 0); }
+function cartTotal() { return state.cart.reduce((s, i) => s + lineSum(i), 0); }
 function viewCart() {
   if (!state.cart.length) {
     app.innerHTML = `<div class="empty"><div class="big">${t('cart.empty')}</div><p>${t('cart.emptyText')}</p><a href="/catalog" class="btn primary">${t('cart.toCatalog')}</a></div>`;
@@ -382,9 +386,9 @@ function viewCart() {
     $('#cartRows').innerHTML = state.cart.map((i, idx) => `
       <div class="cart-row">
         <div class="thumb">${productImage(i)}</div>
-        <div><a href="/product/${i.id}"><b>${esc(pName(i))}</b></a><div class="muted">${zl(i.price)} / ${esc(unitName(i.unit))}</div></div>
+        <div><a href="/product/${i.id}"><b>${esc(pName(i))}</b></a><div class="muted">${zl(i.price)} / ${esc(priceUnit(i))}${i.piece_weight ? ` · ${esc(t('p.piece', { g: pieceG(i) }))}` : ''}</div></div>
         <div class="qty row-qty"><button data-dec="${idx}">−</button><input value="${fmtQty(i.qty)}" readonly><button data-inc="${idx}">+</button></div>
-        <div class="price" style="font-size:18px">${zl(Math.round(i.price * i.qty * 100) / 100)}</div>
+        <div class="price" style="font-size:18px">${i.piece_weight ? '≈ ' : ''}${zl(lineSum(i))}</div>
         <button class="btn-icon" data-del="${idx}" title="${esc(t('cart.remove'))}" aria-label="${esc(t('cart.remove'))}">✕</button>
       </div>`).join('');
     updateTotals();
@@ -535,7 +539,7 @@ function orderCard(o, manage = false) {
       ${manage ? `<select class="input" data-status="${o.id}" style="width:auto" ${o.status === 'cancelled' ? 'disabled' : ''}>${Object.entries(state.meta.order_statuses).map(([k, v]) => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${v}</option>`).join('')}</select>` : `<span class="st st-${o.status}">${esc(statusName(o.status))}</span>`}
     </div>
     ${manage ? `<div class="muted" style="font-size:14px">${esc(o.customer_name)} · <a href="tel:${esc(o.phone)}" style="color:var(--gold-2)">${esc(o.phone)}</a>${o.email ? ' · ' + esc(o.email) : ''}${o.lang === 'pl' ? ' · 🇵🇱 PL' : ''}<br>${o.delivery === 'pickup' ? 'Самовывоз' : 'Курьер: ' + esc(o.address) + (o.distance_km != null ? ` · ${o.distance_km} км` : ' · <span style="color:var(--warn)">расстояние не проверено</span>')}${o.comment ? `<br>💬 ${esc(o.comment)}` : ''}</div>` : ''}
-    <ul class="order-items">${o.items.map((i) => `<li>${esc(manage ? i.name : (LANG === 'pl' && i.name_pl) || i.name)} — ${fmtQty(i.qty)} ${esc(manage ? i.unit : unitName(i.unit))} × ${zl(i.price)}</li>`).join('')}</ul>
+    <ul class="order-items">${o.items.map((i) => `<li>${esc(manage ? i.name : (LANG === 'pl' && i.name_pl) || i.name)} — ${fmtQty(i.qty)} ${esc(manage ? i.unit : unitName(i.unit))} × ${zl(i.price)}${i.piece_weight ? `/${manage ? 'кг' : t('p.perKg')} (≈ ${fmtQty(Math.round(i.qty * i.piece_weight * 1000) / 1000)} ${manage ? 'кг' : t('p.perKg')})` : ''}</li>`).join('')}</ul>
     ${o.total_final != null
       ? `<div class="total-line"><span class="muted">${tt('order.goodsEst')}</span><span class="muted">${zl(o.total)}</span></div>
          <div class="total-line"><span class="muted">${tt('order.goodsFinal')}</span><span>${zl(o.total_final)}</span></div>`
@@ -674,6 +678,7 @@ async function editProduct(id) {
         <label class="field">Единица<select class="input" name="unit">${m.units.map((u) => `<option ${u === p.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
         <label class="field">Мин. остаток (сигнал «мало»)<input class="input" name="min_stock" type="number" step="0.1" min="0" value="${p.min_stock ?? 0}"></label>
       </div>
+      <label class="field">Поштучно по цене за кг: примерный вес 1 шт., кг <span class="muted">(пусто — обычный товар; например 0,5 — цена указывается за 1 кг, заказ в штуках, единица «шт»)</span><input class="input" name="piece_weight" inputmode="decimal" placeholder="не продаётся поштучно" value="${p.piece_weight ?? ''}"></label>
       <div class="form-row">
         <label class="field">Метка на карточке<input class="input" name="badge" maxlength="16" placeholder="ХИТ, NEW, PREMIUM…" value="${esc(p.badge)}"></label>
         ${!id && can('stock.manage') ? '<label class="field">Начальный остаток<input class="input" name="initial_stock" type="number" step="0.1" min="0" value="0"></label>' : '<div></div>'}
@@ -698,7 +703,7 @@ async function editProduct(id) {
       const body = {
         name: f.name.value, sku: f.sku.value, category: f.category.value, description: f.description.value,
         name_pl: f.name_pl.value, description_pl: f.description_pl.value,
-        unit: f.unit.value, min_stock: f.min_stock.value || 0, badge: f.badge.value,
+        unit: f.unit.value, min_stock: f.min_stock.value || 0, badge: f.badge.value, piece_weight: f.piece_weight.value,
         active: f.active.checked, featured: f.featured.checked,
       };
       if (!priceLock) { body.price = f.price.value || 0; if (f.cost) body.cost = f.cost.value || 0; }

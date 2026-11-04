@@ -78,3 +78,18 @@ test('таблица 10% — только администратор; счита
   const csv = await fetch(base + '/api/reports/percent.csv');
   assert.equal(csv.status, 401);
 });
+
+test('поштучно по цене за кг: сумма = штуки × вес шт. × цена за кг', async () => {
+  const admin = client();
+  const guest = client();
+  await admin('POST', '/api/auth/login', { email: 'admin@shul.fish', password: 'admin-test-pass' });
+  const p = (await admin('POST', '/api/products', { name: 'Скумбрия', category: 'smoked', unit: 'шт', price: 45, piece_weight: '0,5', initial_stock: 20 })).data.product;
+  assert.equal(p.piece_weight, 0.5);
+  assert.equal((await guest('GET', `/api/products/${p.id}`)).data.product.piece_weight, 0.5);
+  const o = (await guest('POST', '/api/orders', { customer_name: 'A', phone: '+48600100200', delivery: 'pickup', consent: true, items: [{ product_id: p.id, qty: 3 }] })).data.order;
+  assert.equal(o.total, 67.5); // 3 шт × 0,5 кг × 45 zł
+  assert.equal(o.items[0].piece_weight, 0.5);
+  // пустое поле — снова обычный товар
+  assert.equal((await admin('PUT', `/api/products/${p.id}`, { piece_weight: '' })).data.product.piece_weight, null);
+  assert.equal((await admin('PUT', `/api/products/${p.id}`, { piece_weight: '-1' })).status, 400);
+});
