@@ -430,6 +430,27 @@ if (process.env.SEED_DEMO !== '1' && !db.prepare("SELECT 1 FROM settings WHERE k
 }
 
 /*
+ * Однократно: единый вид артикулов SF-NNN. Товары с артикулом другого вида (SH1, DS1 …)
+ * получают SF-<номер товара>. Старый артикул помечается удалённым для Google Таблицы,
+ * история склада переписывается на новый артикул. Артикулы, заданные позже, не трогаются.
+ */
+if (!db.prepare("SELECT 1 FROM settings WHERE key = 'sku_unify_v1'").get()) {
+  tx(() => {
+    const renamed = [];
+    for (const p of db.prepare('SELECT id, sku FROM products ORDER BY id').all()) {
+      if (/^SF-\d{3,}(-\d+)?$/.test(p.sku || '')) continue;
+      const sku = uniqueSku(`SF-${String(p.id).padStart(3, '0')}`, p.id);
+      db.prepare("UPDATE products SET sku = ?, updated_at = datetime('now') WHERE id = ?").run(sku, p.id);
+      db.prepare('UPDATE stock_movements SET product_sku = ? WHERE product_id = ?').run(sku, p.id);
+      if (p.sku) db.prepare('INSERT OR REPLACE INTO deleted_skus (sku, pushed) VALUES (?, 0)').run(p.sku);
+      renamed.push(`${p.sku || '—'} → ${sku}`);
+    }
+    if (renamed.length) audit({ id: null, name: 'Система', role: 'auto' }, 'Единые артикулы', renamed.join(', '));
+    db.prepare("INSERT INTO settings (key, value) VALUES ('sku_unify_v1', ?)").run(new Date().toISOString());
+  });
+}
+
+/*
  * Стоковые фото товаров: public/img/products/<АРТИКУЛ>.jpg (+ <АРТИКУЛ>_2.jpg, <АРТИКУЛ>_3.jpg …).
  * Подключаются к товару один раз и только если у товара ещё нет ни одного фото —
  * загруженные вручную фото не трогаем, удалённые вручную обратно не появятся.
