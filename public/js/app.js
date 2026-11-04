@@ -333,6 +333,13 @@ function viewDelivery() {
   <div class="two-col">
     <div class="panel glow">
       <h3>${t('del.city')}</h3><p class="muted">${t('del.cityText')}</p>
+      <div class="panel" style="margin:18px 0;border-color:var(--gold)">
+        <h3 style="margin-top:0">${t('del.price')}</h3>
+        <div class="price" style="font-size:26px">${t('del.priceKm')}</div>
+        <p style="margin:6px 0 10px"><b>${t('del.priceMin')}</b> · ${t('del.pricePickup')}</p>
+        <p class="muted" style="margin:0 0 6px">${t('del.priceTable')}</p>
+        <p class="muted" style="margin:0;font-size:13px">${t('del.priceNote')}</p>
+      </div>
       <h3 style="margin-top:20px">${t('del.areas')}</h3><p class="muted">${t('del.radius')}</p><ul class="muted">${DELIVERY_AREAS.map(([, n]) => `<li>${esc(n[LANG] || n.ru)}</li>`).join('')}</ul>
       <h3 style="margin-top:20px">${t('del.pickup')}</h3><p class="muted">${t('del.pickupText')}</p>
       <h3 style="margin-top:20px">${t('del.weight')}</h3><p class="muted">${t('del.weightText')}</p>
