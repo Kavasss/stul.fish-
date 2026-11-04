@@ -18,7 +18,7 @@ const I18N = {
     'nav.account': 'Личный кабинет', 'nav.cart': 'Корзина', 'nav.menu': 'Меню', 'nav.admin': 'Панель управления', 'nav.login': 'Войти',
     'nav.accountOf': 'Кабинет: {name}', 'lang.switch': 'Język polski',
     'foot.tagline': 'Копчёная, вяленая, сушёная рыба и икра. Premium quality.',
-    'foot.delivery': 'Доставка', 'foot.deliveryText': 'Варшава (включая Таргувек), Зомбки, Марки, Зелёнка, Кобылка — курьером в день заказа.<br>Самовывоз — по договорённости.',
+    'foot.delivery': 'Доставка', 'foot.deliveryText': 'Курьером в день заказа — в радиусе 7 км от Bazaru Trocka (Таргувек).<br>Самовывоз — по договорённости.',
     'foot.contacts': 'Контакты', 'foot.contactsText': 'Warszawa, Polska<br>Пн–Вс 10:00–21:00',
     'legal.terms': 'Правила магазина', 'legal.privacy': 'Политика конфиденциальности', 'legal.cookies': 'Cookies',
     'common.error': 'Ошибка', 'common.notFound': 'Страница не найдена', 'common.home': 'На главную', 'common.cancel': 'Отмена', 'common.save': 'Сохранить',
@@ -38,7 +38,7 @@ const I18N = {
     'cat.sortExp': 'Сначала дороже', 'cat.sortName': 'По названию', 'cat.nothing': 'Ничего не найдено', 'cat.tryOther': 'Попробуйте изменить запрос',
     'p.sku': 'Артикул', 'p.availability': 'Наличие', 'p.inStock': 'В наличии', 'p.outOfStock': 'Нет в наличии', 'p.step': 'Фасовка',
     'p.stepKg': 'упаковка 1 кг', 'p.edit': '✎ Редактировать товар',
-    'del.title': 'Доставка и оплата', 'del.city': 'Курьерская доставка', 'del.areas': 'Куда доставляем',
+    'del.title': 'Доставка и оплата', 'del.city': 'Курьерская доставка', 'del.areas': 'Куда доставляем', 'del.radius': 'В радиусе 7 км от Bazaru Trocka (Таргувек). Расстояние проверяется автоматически по адресу при оформлении заказа. В том числе:',
     'del.cityText': 'Курьер привезёт заказ в день оформления при заказе до 16:00. Менеджер позвонит для подтверждения состава и времени.',
     'del.pickup': 'Самовывоз', 'del.pickupText': 'Забрать заказ можно по договорённости с менеджером.',
     'del.weight': 'Фасовка', 'del.weightText': 'Вся продукция фасуется упаковками по 1 кг. Цена на сайте указана за 1 кг.',
@@ -70,7 +70,7 @@ const I18N = {
     'nav.account': 'Moje konto', 'nav.cart': 'Koszyk', 'nav.menu': 'Menu', 'nav.admin': 'Panel zarządzania', 'nav.login': 'Zaloguj się',
     'nav.accountOf': 'Konto: {name}', 'lang.switch': 'Русский язык',
     'foot.tagline': 'Ryby wędzone, suszone, przekąski rybne i ikra. Premium quality.',
-    'foot.delivery': 'Dostawa', 'foot.deliveryText': 'Warszawa (w tym Targówek), Ząbki, Marki, Zielonka, Kobyłka — kurierem w dniu zamówienia.<br>Odbiór osobisty — po uzgodnieniu.',
+    'foot.delivery': 'Dostawa', 'foot.deliveryText': 'Kurierem w dniu zamówienia — w promieniu 7 km od Bazaru Trocka (Targówek).<br>Odbiór osobisty — po uzgodnieniu.',
     'foot.contacts': 'Kontakt', 'foot.contactsText': 'Warszawa, Polska<br>Pn–Nd 10:00–21:00',
     'legal.terms': 'Regulamin sklepu', 'legal.privacy': 'Polityka prywatności', 'legal.cookies': 'Cookies',
     'common.error': 'Błąd', 'common.notFound': 'Nie znaleziono strony', 'common.home': 'Strona główna', 'common.cancel': 'Anuluj', 'common.save': 'Zapisz',
@@ -90,7 +90,7 @@ const I18N = {
     'cat.sortExp': 'Od najdroższych', 'cat.sortName': 'Według nazwy', 'cat.nothing': 'Nic nie znaleziono', 'cat.tryOther': 'Spróbuj zmienić zapytanie',
     'p.sku': 'Kod produktu', 'p.availability': 'Dostępność', 'p.inStock': 'Dostępny', 'p.outOfStock': 'Brak w magazynie', 'p.step': 'Opakowanie',
     'p.stepKg': '1 kg', 'p.edit': '✎ Edytuj produkt',
-    'del.title': 'Dostawa i płatność', 'del.city': 'Dostawa kurierska', 'del.areas': 'Gdzie dostarczamy',
+    'del.title': 'Dostawa i płatność', 'del.city': 'Dostawa kurierska', 'del.areas': 'Gdzie dostarczamy', 'del.radius': 'W promieniu 7 km od Bazaru Trocka (Targówek). Odległość sprawdzamy automatycznie na podstawie adresu przy składaniu zamówienia. M.in.:',
     'del.cityText': 'Przy zamówieniu do 16:00 kurier dostarczy je tego samego dnia. Konsultant zadzwoni, aby potwierdzić skład zamówienia i godzinę dostawy.',
     'del.pickup': 'Odbiór osobisty', 'del.pickupText': 'Zamówienie można odebrać po wcześniejszym uzgodnieniu z konsultantem.',
     'del.weight': 'Opakowania', 'del.weightText': 'Wszystkie produkty pakujemy w opakowania po 1 kg. Cena w sklepie dotyczy 1 kg.',
@@ -124,11 +124,10 @@ const CAT_NAMES = {
 };
 // Зона доставки (ключи совпадают с DELIVERY_AREAS на сервере)
 const DELIVERY_AREAS = [
-  ['warszawa', { ru: 'Варшава — все районы, включая Таргувек', pl: 'Warszawa — wszystkie dzielnice, w tym Targówek' }],
+  ['warszawa', { ru: 'Варшава (Таргувек, Брудно, Прага, Белоленка и др.)', pl: 'Warszawa (Targówek, Bródno, Praga, Białołęka i in.)' }],
   ['zabki', { ru: 'Зомбки (Ząbki)', pl: 'Ząbki' }],
   ['marki', { ru: 'Марки (Marki)', pl: 'Marki' }],
-  ['zielonka', { ru: 'Зелёнка (Zielonka)', pl: 'Zielonka' }],
-  ['kobylka', { ru: 'Кобылка (Kobyłka)', pl: 'Kobyłka' }],
+  ['zielonka', { ru: 'Зелёнка (Zielonka), ближняя часть', pl: 'Zielonka (bliższa część)' }],
 ];
 const UNIT_NAMES = { pl: { 'кг': 'kg', 'шт': 'szt.', 'банка': 'słoik', 'уп': 'opak.' } };
 const STATUS_NAMES = {
@@ -169,6 +168,7 @@ const SERVER_ERRORS_PL = [
   [/^Укажите имя и корректный телефон$/, 'Podaj imię i prawidłowy numer telefonu'],
   [/^Укажите адрес доставки.*/, 'Podaj adres dostawy'],
   [/^Выберите район доставки.*/, 'Wybierz miejscowość dostawy z listy'],
+  [/^Адрес примерно в ([\d.]+) км от нас — курьер доставляет в радиусе (\d+) км от Bazaru Trocka\. Выберите самовывоз или позвоните нам\.$/, 'Adres jest ok. $1 km od nas — kurier dowozi w promieniu $2 km od Bazaru Trocka. Wybierz odbiór osobisty lub zadzwoń do nas.'],
   [/^Товар не найден$/, 'Nie znaleziono produktu'],
   [/^Товара «(.+)» нет в таком количестве.*/, 'Produktu „$1” nie ma w takiej ilości. Zmniejsz ilość lub skontaktuj się z nami.'],
   [/^Количество «(.+)» — только целое число упаковок$/, 'Ilość produktu „$1” — tylko pełne opakowania'],

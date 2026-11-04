@@ -7,6 +7,7 @@ const path = require('node:path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shulfish-seo-'));
 process.env.SEED_DEMO = '1';
+process.env.GEOCODER_URL = 'off';
 process.env.ADMIN_PASSWORD = 'admin-test-pass';
 process.env.MANAGER_PASSWORD = 'manager-test-pass';
 process.env.STOCK_PHOTOS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shulfish-nophotos-'));

@@ -10,10 +10,18 @@ process.env.SEED_DEMO = '1';
 process.env.ADMIN_PASSWORD = 'admin-test-pass';
 process.env.MANAGER_PASSWORD = 'manager-test-pass';
 process.env.TRUST_PROXY = '1';
+// Поддельный геокодер: «Daleka» — 20 км от центра, «Bliska» — рядом, остальное не находится
+const http = require('node:http');
+const geo = http.createServer((req, res) => {
+  const q = new URL(req.url, 'http://x').searchParams.get('street') || '';
+  const hit = /Daleka/.test(q) ? [{ lat: '52.45', lon: '21.06' }] : /Bliska/.test(q) ? [{ lat: '52.29', lon: '21.10' }] : [];
+  res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(hit));
+}).listen(0);
+process.env.GEOCODER_URL = `http://127.0.0.1:${geo.address().port}/search`;
 const { server } = require('../server.js');
 let base;
 before(() => new Promise((r) => server.listen(0, () => { base = `http://127.0.0.1:${server.address().port}`; r(); })));
-after(() => new Promise((r) => server.close(r)));
+after(() => new Promise((r) => { geo.close(); server.close(r); }));
 
 const login = (email, password, xff) => fetch(base + '/api/auth/login', {
   method: 'POST',
@@ -68,4 +76,18 @@ test('доставка: район из списка добавляется к �
   assert.equal(ok.status, 200);
   assert.equal((await ok.json()).order.address, 'Ząbki, ul. Piłsudskiego 1');
   assert.equal((await order({ area: 'krakow', address: 'x' }, '203.0.113.93')).status, 400);
+});
+
+test('доставка: адрес дальше 7 км отклоняется, ближний принимается с расстоянием', async () => {
+  const order = (address, ip) => fetch(base + '/api/orders', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip },
+    body: JSON.stringify({ items: [{ product_id: 1, qty: 1 }], customer_name: 'Тест', phone: '+48 600 000 000', delivery: 'courier', area: 'marki', address, consent: true, lang: 'ru' }),
+  });
+  const far = await order('ul. Daleka 5', '203.0.113.94');
+  assert.equal(far.status, 400);
+  assert.match((await far.json()).error, /радиусе 7 км/);
+  const near = await order('ul. Bliska 5', '203.0.113.95');
+  assert.equal(near.status, 200);
+  const d = (await near.json()).order.distance_km;
+  assert.ok(d > 0 && d < 7, String(d));
 });

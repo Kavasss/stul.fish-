@@ -48,7 +48,7 @@ const LEGAL = {
       <p>Способы оплаты: наличными или картой курьеру, BLIK, банковским переводом. Конкретный способ согласуется при подтверждении заказа.</p>
 
       <h3>5. Доставка</h3>
-      <p>Доставка выполняется курьером по Варшаве (все районы, включая Таргувек) и в соседние города: Зомбки, Марки, Зелёнка, Кобылка — обычно в день заказа (при заказе до 16:00). Также возможен самовывоз по договорённости.
+      <p>Доставка выполняется курьером в радиусе 7 км от Bazaru Trocka (Варшава, Таргувек), включая соседние Зомбки и Марки, — обычно в день заказа (при заказе до 16:00). Также возможен самовывоз по договорённости.
       Скоропортящиеся продукты перевозятся с соблюдением условий хранения.</p>
 
       <h3>6. Отказ от договора</h3>
@@ -106,7 +106,7 @@ const LEGAL = {
       <p>Dostępne formy płatności: gotówką lub kartą u kuriera, BLIK, przelew bankowy. Forma płatności jest uzgadniana przy potwierdzeniu zamówienia.</p>
 
       <h3>§ 5. Dostawa</h3>
-      <p>Dostawa realizowana jest kurierem na terenie Warszawy (wszystkie dzielnice, w tym Targówek) oraz do sąsiednich miejscowości: Ząbki, Marki, Zielonka, Kobyłka, zazwyczaj w dniu złożenia zamówienia (przy zamówieniu do godz. 16:00).
+      <p>Dostawa realizowana jest kurierem w promieniu 7 km od Bazaru Trocka (Warszawa, Targówek), w tym do sąsiednich Ząbek i Marek, zazwyczaj w dniu złożenia zamówienia (przy zamówieniu do godz. 16:00).
       Możliwy jest również odbiór osobisty po wcześniejszym uzgodnieniu. Produkty łatwo psujące się przewożone są z zachowaniem warunków przechowywania.</p>
 
       <h3>§ 6. Odstąpienie od umowy</h3>
@@ -168,6 +168,7 @@ const LEGAL = {
       <ul>
         <li>курьерам и службам доставки — в объёме, нужном для доставки;</li>
         <li>хостинг-провайдеру, на серверах которого работает сайт;</li>
+        <li>OpenStreetMap Foundation (сервис Nominatim): при оформлении доставки ему передаётся только адрес (без имени и телефона), чтобы проверить расстояние до зоны доставки;</li>
         <li>Google Ireland Ltd. (Google Workspace / Google Таблицы): там ведётся учёт заказов и склада.
           Google может обрабатывать данные за пределами ЕЭЗ на основании стандартных договорных условий ЕС;</li>
         <li>бухгалтерии и, по законному требованию, государственным органам.</li>
@@ -216,6 +217,7 @@ const LEGAL = {
       <ul>
         <li>kurierzy i firmy dostawcze — w zakresie niezbędnym do doręczenia;</li>
         <li>dostawca hostingu, na którego serwerach działa Sklep;</li>
+        <li>OpenStreetMap Foundation (usługa Nominatim): przy zamówieniu z dostawą przekazywany jest wyłącznie adres (bez imienia i telefonu), aby sprawdzić odległość od strefy dostawy;</li>
         <li>Google Ireland Ltd. (Google Workspace / Arkusze Google), w których prowadzona jest ewidencja zamówień i magazynu.
           Google może przetwarzać dane poza EOG na podstawie standardowych klauzul umownych zatwierdzonych przez Komisję Europejską;</li>
         <li>biuro rachunkowe oraz — na podstawie przepisów prawa — uprawnione organy państwowe.</li>

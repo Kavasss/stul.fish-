@@ -80,6 +80,7 @@ before(async () => {
   await new Promise((r) => gas.listen(0, r));
   process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shulfish-sheets-'));
   process.env.SEED_DEMO = '1';
+  process.env.GEOCODER_URL = 'off';
   process.env.ADMIN_PASSWORD = 'admin-test-pass';
   process.env.MANAGER_PASSWORD = 'manager-test-pass';
   process.env.SHEETS_WEBAPP_URL = `http://127.0.0.1:${gas.address().port}/exec`;

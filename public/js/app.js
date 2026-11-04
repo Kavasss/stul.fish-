@@ -329,7 +329,7 @@ function viewDelivery() {
   <div class="two-col">
     <div class="panel glow">
       <h3>${t('del.city')}</h3><p class="muted">${t('del.cityText')}</p>
-      <h3 style="margin-top:20px">${t('del.areas')}</h3><ul class="muted">${DELIVERY_AREAS.map(([, n]) => `<li>${esc(n[LANG] || n.ru)}</li>`).join('')}</ul>
+      <h3 style="margin-top:20px">${t('del.areas')}</h3><p class="muted">${t('del.radius')}</p><ul class="muted">${DELIVERY_AREAS.map(([, n]) => `<li>${esc(n[LANG] || n.ru)}</li>`).join('')}</ul>
       <h3 style="margin-top:20px">${t('del.pickup')}</h3><p class="muted">${t('del.pickupText')}</p>
       <h3 style="margin-top:20px">${t('del.weight')}</h3><p class="muted">${t('del.weightText')}</p>
     </div>
@@ -493,7 +493,7 @@ function orderCard(o, manage = false) {
       <div><b style="font:600 18px var(--head)">${tt('order.n', { id: o.id })}</b> <span class="muted">· ${fmtDate(o.created_at)}</span></div>
       ${manage ? `<select class="input" data-status="${o.id}" style="width:auto" ${o.status === 'cancelled' ? 'disabled' : ''}>${Object.entries(state.meta.order_statuses).map(([k, v]) => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${v}</option>`).join('')}</select>` : `<span class="st st-${o.status}">${esc(statusName(o.status))}</span>`}
     </div>
-    ${manage ? `<div class="muted" style="font-size:14px">${esc(o.customer_name)} · <a href="tel:${esc(o.phone)}" style="color:var(--gold-2)">${esc(o.phone)}</a>${o.email ? ' · ' + esc(o.email) : ''}${o.lang === 'pl' ? ' · 🇵🇱 PL' : ''}<br>${o.delivery === 'pickup' ? 'Самовывоз' : 'Курьер: ' + esc(o.address)}${o.comment ? `<br>💬 ${esc(o.comment)}` : ''}</div>` : ''}
+    ${manage ? `<div class="muted" style="font-size:14px">${esc(o.customer_name)} · <a href="tel:${esc(o.phone)}" style="color:var(--gold-2)">${esc(o.phone)}</a>${o.email ? ' · ' + esc(o.email) : ''}${o.lang === 'pl' ? ' · 🇵🇱 PL' : ''}<br>${o.delivery === 'pickup' ? 'Самовывоз' : 'Курьер: ' + esc(o.address) + (o.distance_km != null ? ` · ${o.distance_km} км` : ' · <span style="color:var(--warn)">расстояние не проверено</span>')}${o.comment ? `<br>💬 ${esc(o.comment)}` : ''}</div>` : ''}
     <ul class="order-items">${o.items.map((i) => `<li>${esc(manage ? i.name : (LANG === 'pl' && i.name_pl) || i.name)} — ${fmtQty(i.qty)} ${esc(manage ? i.unit : unitName(i.unit))} × ${zl(i.price)}</li>`).join('')}</ul>
     <div class="total-line"><span class="muted">${tt('order.sum')}</span><b class="price" style="font-size:20px">${zl(o.total)}</b></div>
   </div>`;

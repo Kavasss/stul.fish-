@@ -64,6 +64,9 @@ ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='надёжный-пароль' MANAG
 
 | Переменная | Назначение |
 |---|---|
+| `DELIVERY_RADIUS_KM` | Радиус курьерской доставки, км (по умолчанию 7) |
+| `DELIVERY_CENTER` | Центр зоны доставки `широта,долгота` (по умолчанию Bazar Trocka: `52.2765,21.0560`) |
+| `GEOCODER_URL` | Геокодер для проверки адреса (по умолчанию Nominatim OpenStreetMap; `off` — не проверять) |
 | `PORT` | порт, по умолчанию 3000 |
 | `DATA_DIR` | папка с базой и фото |
 | `COOKIE_SECURE=1` | cookie только по HTTPS (включите на боевом сайте) |

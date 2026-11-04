@@ -61,14 +61,50 @@ const MOVEMENT_TYPES = {
   sale: 'Продажа',
   return: 'Возврат',
 };
-// Зона курьерской доставки: вся Варшава (включая Таргувек) и соседние города
+// Зона курьерской доставки: радиус DELIVERY_RADIUS_KM от Bazaru Trocka (Targówek).
+// Город выбирается из списка, точное расстояние проверяется по адресу (геокодер OpenStreetMap).
 const DELIVERY_AREAS = {
   warszawa: 'Warszawa',
   zabki: 'Ząbki',
   marki: 'Marki',
   zielonka: 'Zielonka',
-  kobylka: 'Kobyłka',
 };
+const DELIVERY_RADIUS_KM = Number(process.env.DELIVERY_RADIUS_KM) || 7;
+const DELIVERY_CENTER = (process.env.DELIVERY_CENTER || '52.2765,21.0560').split(',').map(Number); // Bazar Trocka
+// GEOCODER_URL=off — не проверять расстояние (тесты, нет интернета)
+const GEOCODER_URL = process.env.GEOCODER_URL || 'https://nominatim.openstreetmap.org/search';
+function distanceKm([lat1, lon1], [lat2, lon2]) {
+  const r = (d) => (d * Math.PI) / 180;
+  const a = Math.sin(r(lat2 - lat1) / 2) ** 2 + Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(r(lon2 - lon1) / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+// Не чаще 1 запроса в секунду (правила Nominatim), результаты кэшируются
+const geoCache = new Map();
+let geoQueue = Promise.resolve();
+function geocode(street, city) {
+  if (GEOCODER_URL === 'off') return Promise.resolve(null);
+  const key = `${street}|${city}`.toLowerCase();
+  if (geoCache.has(key)) return Promise.resolve(geoCache.get(key));
+  const run = geoQueue.then(async () => {
+    const url = `${GEOCODER_URL}?format=json&limit=1&countrycodes=pl&street=${encodeURIComponent(street)}&city=${encodeURIComponent(city)}` +
+      // ищем только вокруг Варшавы, иначе «Zielonka» находится в другом конце Польши
+      `&viewbox=${DELIVERY_CENTER[1] - 0.4},${DELIVERY_CENTER[0] + 0.25},${DELIVERY_CENTER[1] + 0.4},${DELIVERY_CENTER[0] - 0.25}&bounded=1`;
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': 'SHUL.FISH shop (shulfish.pl)', 'Accept-Language': 'pl' }, signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return null;
+      const d = await res.json();
+      const hit = Array.isArray(d) && d[0] ? [Number(d[0].lat), Number(d[0].lon)] : null;
+      if (hit && hit.every(Number.isFinite)) {
+        if (geoCache.size > 2000) geoCache.clear();
+        geoCache.set(key, hit);
+        return hit;
+      }
+      return null;
+    } catch { return null; }
+  });
+  geoQueue = run.then(() => new Promise((r) => setTimeout(r, 1100)));
+  return run;
+}
 const ORDER_STATUSES = {
   new: 'Новый',
   confirmed: 'Подтверждён',
@@ -188,6 +224,7 @@ addColumn('users', 'consent_at', 'TEXT');
 addColumn('products', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 addColumn('products', 'description_pl', "TEXT NOT NULL DEFAULT ''");
 addColumn('orders', 'lang', "TEXT NOT NULL DEFAULT 'ru'");
+addColumn('orders', 'distance_km', 'REAL');
 addColumn('order_items', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mov_sheet_key ON stock_movements(sheet_key) WHERE sheet_key IS NOT NULL;
 UPDATE stock_movements SET product_sku = COALESCE((SELECT sku FROM products WHERE products.id = stock_movements.product_id), '') WHERE product_sku = '';`);
@@ -585,7 +622,7 @@ function need(user, perm) {
   if (perm && !can(user, perm)) throw new HttpError(403, 'Недостаточно прав');
 }
 
-route('GET', '/api/meta', () => ({ categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, delivery_areas: DELIVERY_AREAS, default_manager_perms: DEFAULT_MANAGER_PERMS }));
+route('GET', '/api/meta', () => ({ categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, delivery_areas: DELIVERY_AREAS, delivery_radius_km: DELIVERY_RADIUS_KM, default_manager_perms: DEFAULT_MANAGER_PERMS }));
 route('GET', '/api/me', ({ user }) => ({ user: publicUser(user) }));
 
 route('POST', '/api/auth/register', ({ body, req, res }) => {
@@ -889,7 +926,7 @@ route('GET', '/api/inventory.csv', ({ user, query, res }) => {
 });
 
 // --- Заказы ---
-route('POST', '/api/orders', ({ user, body, req }) => {
+route('POST', '/api/orders', async ({ user, body, req }) => {
   // Не даём боту «выкупить» склад фейковыми заказами
   if (!seesStock(user)) rateLimit('order', clientIp(req), 10, 3600e3, 'Слишком много заказов подряд. Позвоните нам, и мы оформим заказ вручную.');
   if (body.consent !== true) throw new HttpError(400, 'Нужно принять правила магазина и политику конфиденциальности');
@@ -900,15 +937,29 @@ route('POST', '/api/orders', ({ user, body, req }) => {
   if (!name || !/^[+\d][\d\s()-]{6,}$/.test(phone)) throw new HttpError(400, 'Укажите имя и корректный телефон');
   const delivery = body.delivery === 'pickup' ? 'pickup' : 'courier';
   let address = str(body.address, 300);
+  let areaName = '', street = '';
   if (delivery === 'courier') {
     const area = DELIVERY_AREAS[body.area || 'warszawa'];
     if (!area) throw new HttpError(400, 'Выберите район доставки из списка');
     if (!address) throw new HttpError(400, 'Укажите адрес доставки');
+    areaName = area;
+    street = address.replace(/^\s*(ul\.|ulica|al\.|aleja|os\.|pl\.)\s*/i, '').split(/\s+(?:m\.|lok\.|kv\.|кв\.)/i)[0].replace(/\s*\/\s*\d+\s*$/, '').trim(); // номер квартиры для поиска не нужен
     address = `${area}, ${address}`.slice(0, 340);
   } else address = '';
+  // Проверка радиуса доставки. Если адрес не нашёлся — заказ принимаем, менеджер уточнит по телефону.
+  let distance = null;
+  if (delivery === 'courier') {
+    const point = await geocode(street, areaName);
+    if (point) {
+      distance = Math.round(distanceKm(DELIVERY_CENTER, point) * 10) / 10;
+      if (distance > DELIVERY_RADIUS_KM) {
+        throw new HttpError(400, `Адрес примерно в ${distance} км от нас — курьер доставляет в радиусе ${DELIVERY_RADIUS_KM} км от Bazaru Trocka. Выберите самовывоз или позвоните нам.`);
+      }
+    }
+  }
   const orderId = tx(() => {
-    const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,lang,consent_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))")
-      .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000), body.lang === 'pl' ? 'pl' : 'ru');
+    const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,lang,consent_at,distance_km) VALUES (?,?,?,?,?,?,?,?,datetime('now'),?)")
+      .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000), body.lang === 'pl' ? 'pl' : 'ru', distance);
     const oid = Number(r.lastInsertRowid);
     let total = 0;
     for (const it of items) {
