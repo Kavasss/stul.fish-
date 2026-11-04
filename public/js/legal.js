@@ -10,8 +10,8 @@ const SELLER = {
   nip: '1251791175',
   regon: '542299723',
   address: 'ul. Żurawia 47/49 lok. 4, 00-680 Warszawa',
-  email: '[e-mail для клиентов]',
-  phone: '[телефон]',
+  email: 'ghgfh2678@gmail.com',
+  phone: '+48 576 230 707',
   domain: 'shulfish.pl',
   updated: '04.11.2026',
 };
