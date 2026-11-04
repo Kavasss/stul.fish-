@@ -61,6 +61,14 @@ const MOVEMENT_TYPES = {
   sale: 'Продажа',
   return: 'Возврат',
 };
+// Зона курьерской доставки: вся Варшава (включая Таргувек) и соседние города
+const DELIVERY_AREAS = {
+  warszawa: 'Warszawa',
+  zabki: 'Ząbki',
+  marki: 'Marki',
+  zielonka: 'Zielonka',
+  kobylka: 'Kobyłka',
+};
 const ORDER_STATUSES = {
   new: 'Новый',
   confirmed: 'Подтверждён',
@@ -577,7 +585,7 @@ function need(user, perm) {
   if (perm && !can(user, perm)) throw new HttpError(403, 'Недостаточно прав');
 }
 
-route('GET', '/api/meta', () => ({ categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, default_manager_perms: DEFAULT_MANAGER_PERMS }));
+route('GET', '/api/meta', () => ({ categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, delivery_areas: DELIVERY_AREAS, default_manager_perms: DEFAULT_MANAGER_PERMS }));
 route('GET', '/api/me', ({ user }) => ({ user: publicUser(user) }));
 
 route('POST', '/api/auth/register', ({ body, req, res }) => {
@@ -891,8 +899,13 @@ route('POST', '/api/orders', ({ user, body, req }) => {
   const phone = str(body.phone, 30);
   if (!name || !/^[+\d][\d\s()-]{6,}$/.test(phone)) throw new HttpError(400, 'Укажите имя и корректный телефон');
   const delivery = body.delivery === 'pickup' ? 'pickup' : 'courier';
-  const address = str(body.address, 300);
-  if (delivery === 'courier' && !address) throw new HttpError(400, 'Укажите адрес доставки по Варшаве');
+  let address = str(body.address, 300);
+  if (delivery === 'courier') {
+    const area = DELIVERY_AREAS[body.area || 'warszawa'];
+    if (!area) throw new HttpError(400, 'Выберите район доставки из списка');
+    if (!address) throw new HttpError(400, 'Укажите адрес доставки');
+    address = `${area}, ${address}`.slice(0, 340);
+  } else address = '';
   const orderId = tx(() => {
     const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,lang,consent_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))")
       .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000), body.lang === 'pl' ? 'pl' : 'ru');

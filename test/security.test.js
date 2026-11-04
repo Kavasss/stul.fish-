@@ -58,3 +58,14 @@ test('заказ покупателя ограничен по количеств
   assert.equal(r.status, 400);
   assert.match((await r.json()).error, /не больше 100/);
 });
+
+test('доставка: район из списка добавляется к адресу, чужой район отклоняется', async () => {
+  const order = (extra, ip) => fetch(base + '/api/orders', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip },
+    body: JSON.stringify({ items: [{ product_id: 1, qty: 1 }], customer_name: 'Тест', phone: '+48 600 000 000', delivery: 'courier', consent: true, lang: 'ru', ...extra }),
+  });
+  const ok = await order({ area: 'zabki', address: 'ul. Piłsudskiego 1' }, '203.0.113.92');
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).order.address, 'Ząbki, ul. Piłsudskiego 1');
+  assert.equal((await order({ area: 'krakow', address: 'x' }, '203.0.113.93')).status, 400);
+});

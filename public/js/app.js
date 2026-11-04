@@ -329,6 +329,7 @@ function viewDelivery() {
   <div class="two-col">
     <div class="panel glow">
       <h3>${t('del.city')}</h3><p class="muted">${t('del.cityText')}</p>
+      <h3 style="margin-top:20px">${t('del.areas')}</h3><ul class="muted">${DELIVERY_AREAS.map(([, n]) => `<li>${esc(n[LANG] || n.ru)}</li>`).join('')}</ul>
       <h3 style="margin-top:20px">${t('del.pickup')}</h3><p class="muted">${t('del.pickupText')}</p>
       <h3 style="margin-top:20px">${t('del.weight')}</h3><p class="muted">${t('del.weightText')}</p>
     </div>
@@ -362,7 +363,10 @@ function viewCart() {
         <label><input type="radio" name="delivery" value="courier" checked> ${t('cart.courier')}</label>
         <label><input type="radio" name="delivery" value="pickup"> ${t('cart.pickup')}</label>
       </div>
-      <label class="field" id="addrField">${t('cart.address')}<input class="input" name="address" autocomplete="street-address" placeholder="${esc(t('cart.addressPh'))}"></label>
+      <div id="addrField" class="form">
+        <label class="field">${t('cart.area')}<select class="input" name="area">${DELIVERY_AREAS.map(([k, n]) => `<option value="${k}">${esc(n[LANG] || n.ru)}</option>`).join('')}</select></label>
+        <label class="field">${t('cart.address')}<input class="input" name="address" autocomplete="street-address" placeholder="${esc(t('cart.addressPh'))}"></label>
+      </div>
       <label class="field">${t('cart.comment')}<textarea class="input" name="comment" placeholder="${esc(t('cart.commentPh'))}"></textarea></label>
       <div class="total-line big"><span>${t('cart.total')}</span><b id="total"></b></div>
       ${consentBox()}

@@ -41,14 +41,14 @@ const LEGAL = {
 
       <h3>3. Оформление заказа</h3>
       <p>Заказ можно оформить без регистрации или из личного кабинета. Чтобы оформить заказ, нужно указать имя, телефон и, для доставки,
-      адрес в Варшаве, а затем нажать кнопку «Заказать с обязательством оплаты». После оформления покупатель видит номер заказа,
+      адрес в зоне доставки, а затем нажать кнопку «Заказать с обязательством оплаты». После оформления покупатель видит номер заказа,
       и менеджер связывается с ним для подтверждения. Договор купли-продажи заключается в момент подтверждения заказа менеджером.</p>
 
       <h3>4. Оплата</h3>
       <p>Способы оплаты: наличными или картой курьеру, BLIK, банковским переводом. Конкретный способ согласуется при подтверждении заказа.</p>
 
       <h3>5. Доставка</h3>
-      <p>Доставка выполняется курьером по Варшаве, обычно в день заказа (при заказе до 16:00). Также возможен самовывоз по договорённости.
+      <p>Доставка выполняется курьером по Варшаве (все районы, включая Таргувек) и в соседние города: Зомбки, Марки, Зелёнка, Кобылка — обычно в день заказа (при заказе до 16:00). Также возможен самовывоз по договорённости.
       Скоропортящиеся продукты перевозятся с соблюдением условий хранения.</p>
 
       <h3>6. Отказ от договора</h3>
@@ -98,7 +98,7 @@ const LEGAL = {
 
       <h3>§ 3. Składanie zamówień</h3>
       <p>Zamówienie można złożyć bez rejestracji lub po zalogowaniu na konto. W tym celu należy podać imię, numer telefonu oraz —
-      w przypadku dostawy — adres na terenie Warszawy, a następnie kliknąć przycisk „Zamawiam z obowiązkiem zapłaty”.
+      w przypadku dostawy — adres w strefie dostawy, a następnie kliknąć przycisk „Zamawiam z obowiązkiem zapłaty”.
       Po złożeniu zamówienia Klient otrzymuje jego numer, a konsultant kontaktuje się z nim w celu potwierdzenia.
       Umowa sprzedaży zostaje zawarta z chwilą potwierdzenia zamówienia przez konsultanta.</p>
 
@@ -106,7 +106,7 @@ const LEGAL = {
       <p>Dostępne formy płatności: gotówką lub kartą u kuriera, BLIK, przelew bankowy. Forma płatności jest uzgadniana przy potwierdzeniu zamówienia.</p>
 
       <h3>§ 5. Dostawa</h3>
-      <p>Dostawa realizowana jest kurierem na terenie Warszawy, zazwyczaj w dniu złożenia zamówienia (przy zamówieniu do godz. 16:00).
+      <p>Dostawa realizowana jest kurierem na terenie Warszawy (wszystkie dzielnice, w tym Targówek) oraz do sąsiednich miejscowości: Ząbki, Marki, Zielonka, Kobyłka, zazwyczaj w dniu złożenia zamówienia (przy zamówieniu do godz. 16:00).
       Możliwy jest również odbiór osobisty po wcześniejszym uzgodnieniu. Produkty łatwo psujące się przewożone są z zachowaniem warunków przechowywania.</p>
 
       <h3>§ 6. Odstąpienie od umowy</h3>
