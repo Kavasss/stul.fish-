@@ -373,7 +373,8 @@ function viewCart() {
       <div class="total-line big"><span>${t('cart.total')}</span><b id="total"></b></div>
       <p class="muted" style="margin:-6px 0 0;font-size:13px">${t('cart.weightNote')}</p>
       ${consentBox()}
-      <button class="btn primary" type="submit">${t('cart.order')}</button>
+      ${state.meta?.orders_paused ? `<div class="panel" style="border-color:var(--warn)">${t('cart.paused')}</div>` : ''}
+      <button class="btn primary" type="submit" ${state.meta?.orders_paused ? 'disabled' : ''}>${t('cart.order')}</button>
       ${state.me ? '' : `<p class="muted" style="margin:0;font-size:13px">${t('cart.loginHint')}</p>`}
     </form>
   </div>`;
@@ -584,7 +585,13 @@ async function viewAdmin(section = 'dashboard') {
 
 function adminDashboard(main, stats) {
   const perms = state.me.permissions.map((p) => `<li>${esc(state.meta.permissions[p])}</li>`).join('');
+  const paused = !!state.meta.orders_paused;
   main.innerHTML = `<h2>Сводка</h2>
+    ${state.me.role === 'admin' ? `<div class="panel" style="margin-bottom:20px;border-color:${paused ? 'var(--warn)' : 'var(--line)'}">
+      <h3 style="margin-top:0">${paused ? '⏸ Приём заказов приостановлен' : '✅ Приём заказов открыт'}</h3>
+      <p class="muted">${paused ? 'Покупатели видят каталог, но оформить заказ не могут.' : 'Покупатели могут оформлять заказы.'}</p>
+      <button class="btn ${paused ? 'primary' : ''}" id="toggleOrders">${paused ? 'Открыть приём заказов' : 'Приостановить приём заказов'}</button>
+    </div>` : (paused ? '<div class="panel" style="margin-bottom:20px;border-color:var(--warn)">⏸ Приём заказов приостановлен администратором</div>' : '')}
     ${stats.weak_passwords ? `<div class="panel" style="border-color:var(--danger);margin-bottom:20px"><h3 style="color:var(--danger)">⚠ Небезопасные пароли</h3>
       <p>У этих учётных записей стоит общеизвестный пароль: <b>${stats.weak_passwords.map(esc).join(', ')}</b>. Любой может войти под ними — смените пароли в разделе «Сотрудники» или в личном кабинете.</p></div>` : ''}
     <div class="stats">
@@ -597,6 +604,16 @@ function adminDashboard(main, stats) {
       <div class="table-wrap"><table><tr><th>Товар</th><th class="num">Остаток</th><th class="num">Минимум</th></tr>
       ${stats.low_stock.map((p) => `<tr><td>${esc(p.name)}</td><td class="num ${p.stock <= 0 ? 'neg' : ''}">${fmtQty(p.stock)} ${esc(p.unit)}</td><td class="num">${fmtQty(p.min_stock)}</td></tr>`).join('')}</table></div></div>` : ''}
     <div class="panel"><h3>Ваши права доступа</h3><ul class="muted">${perms}</ul></div>`;
+  $('#toggleOrders')?.addEventListener('click', async () => {
+    const next = !state.meta.orders_paused;
+    if (!confirm(next ? 'Приостановить приём заказов?' : 'Открыть приём заказов?')) return;
+    try {
+      const r = await api('PUT', '/api/settings/orders', { paused: next });
+      state.meta.orders_paused = r.orders_paused;
+      toast(r.orders_paused ? 'Приём заказов приостановлен' : 'Приём заказов открыт');
+      adminDashboard(main, stats);
+    } catch (err) { toast(err.message, true); }
+  });
 }
 
 /* ---------- Товары ---------- */

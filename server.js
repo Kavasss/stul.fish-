@@ -434,6 +434,14 @@ if (process.env.SEED_DEMO !== '1' && !db.prepare("SELECT 1 FROM settings WHERE k
  * получают SF-<номер товара>. Старый артикул помечается удалённым для Google Таблицы,
  * история склада переписывается на новый артикул. Артикулы, заданные позже, не трогаются.
  */
+// Приём заказов: settings.orders_paused = '1' — заказы не принимаются. Включается/выключается администратором.
+// На рабочем сайте при первом запуске этой версии приём ставится на паузу (по просьбе владельца).
+if (process.env.SEED_DEMO !== '1' && !db.prepare("SELECT 1 FROM settings WHERE key = 'orders_pause_init_v1'").get()) {
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('orders_paused', '1')").run();
+  db.prepare("INSERT INTO settings (key, value) VALUES ('orders_pause_init_v1', ?)").run(new Date().toISOString());
+}
+const ordersPaused = () => db.prepare("SELECT value FROM settings WHERE key = 'orders_paused'").get()?.value === '1';
+
 if (!db.prepare("SELECT 1 FROM settings WHERE key = 'sku_unify_v1'").get()) {
   tx(() => {
     const renamed = [];
@@ -649,7 +657,7 @@ function need(user, perm) {
   if (perm && !can(user, perm)) throw new HttpError(403, 'Недостаточно прав');
 }
 
-route('GET', '/api/meta', () => ({ categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, delivery_areas: DELIVERY_AREAS, delivery_radius_km: DELIVERY_RADIUS_KM, delivery_price_per_km: DELIVERY_PRICE_PER_KM / 100, default_manager_perms: DEFAULT_MANAGER_PERMS }));
+route('GET', '/api/meta', () => ({ orders_paused: ordersPaused(), categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, delivery_areas: DELIVERY_AREAS, delivery_radius_km: DELIVERY_RADIUS_KM, delivery_price_per_km: DELIVERY_PRICE_PER_KM / 100, default_manager_perms: DEFAULT_MANAGER_PERMS }));
 route('GET', '/api/me', ({ user }) => ({ user: publicUser(user) }));
 
 route('POST', '/api/auth/register', ({ body, req, res }) => {
@@ -979,6 +987,7 @@ route('POST', '/api/delivery/quote', async ({ body, req }) => {
 route('POST', '/api/orders', async ({ user, body, req }) => {
   // Не даём боту «выкупить» склад фейковыми заказами
   if (!seesStock(user)) rateLimit('order', clientIp(req), 10, 3600e3, 'Слишком много заказов подряд. Позвоните нам, и мы оформим заказ вручную.');
+  if (ordersPaused()) throw new HttpError(503, 'Приём заказов временно приостановлен. Пожалуйста, загляните позже или позвоните нам.');
   if (body.consent !== true) throw new HttpError(400, 'Нужно принять правила магазина и политику конфиденциальности');
   const items = Array.isArray(body.items) ? body.items.slice(0, 50) : [];
   if (!items.length) throw new HttpError(400, 'Корзина пуста');
@@ -1095,6 +1104,13 @@ function needAdmin(user) {
   need(user);
   if (user.role !== 'admin') throw new HttpError(403, 'Недостаточно прав');
 }
+route('PUT', '/api/settings/orders', ({ user, body }) => {
+  needAdmin(user);
+  const paused = body.paused === true;
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('orders_paused', ?)").run(paused ? '1' : '0');
+  audit(user, paused ? 'Приём заказов приостановлен' : 'Приём заказов открыт');
+  return { orders_paused: paused };
+});
 route('GET', '/api/reports/percent', ({ user, query }) => {
   needAdmin(user);
   return percentReport(...periodFromQuery(query));
