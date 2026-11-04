@@ -14,7 +14,7 @@ const I18N = {
   ru: {
     'meta.title': 'SHUL.FISH — копчёная, вяленая рыба и икра в Варшаве',
     'meta.desc': 'SHUL.FISH — премиальная копчёная, вяленая и сушёная рыба, красная и чёрная икра с доставкой по Варшаве.',
-    'nav.catalog': 'Каталог', 'nav.smoked': 'Копчёная', 'nav.cured': 'Вяленая', 'nav.dried': 'Сушёная', 'nav.caviar': 'Икра', 'nav.frozen': 'Заморозка', 'nav.delivery': 'Доставка',
+    'nav.catalog': 'Каталог', 'nav.smoked': 'Копчёная', 'nav.cured': 'Вяленая', 'nav.dried': 'Сушёная', 'nav.salted': 'Малосольная', 'nav.caviar': 'Икра', 'nav.frozen': 'Заморозка', 'nav.delivery': 'Доставка',
     'nav.account': 'Личный кабинет', 'nav.cart': 'Корзина', 'nav.menu': 'Меню', 'nav.admin': 'Панель управления', 'nav.login': 'Войти',
     'nav.accountOf': 'Кабинет: {name}', 'lang.switch': 'Język polski',
     'foot.tagline': 'Копчёная, вяленая, сушёная рыба и икра. Premium quality.',
@@ -33,7 +33,7 @@ const I18N = {
     'home.c.smoked': 'Копчёная', 'home.c.smoked.s': 'Горячего и холодного копчения',
     'home.c.cured': 'Вяленая', 'home.c.cured.s': 'Вобла, тарань, лещ, чехонь',
     'home.c.dried': 'Сушёная', 'home.c.dried.s': 'Корюшка, анчоус, кальмар',
-    'home.c.caviar': 'Икра', 'home.c.caviar.s': 'Красная и чёрная', 'home.c.frozen': 'Заморозка', 'home.c.frozen.s': 'Рыба и морепродукты',
+    'home.c.caviar': 'Икра', 'home.c.caviar.s': 'Красная и чёрная', 'home.c.salted': 'Малосольная', 'home.c.salted.s': 'Сельдь, лосось, скумбрия', 'home.c.frozen': 'Заморозка', 'home.c.frozen.s': 'Рыба и морепродукты',
     'cat.title': 'Каталог', 'cat.all': 'Все', 'cat.search': 'Поиск…', 'cat.sortPop': 'По популярности', 'cat.sortCheap': 'Сначала дешевле',
     'cat.sortExp': 'Сначала дороже', 'cat.sortName': 'По названию', 'cat.nothing': 'Ничего не найдено', 'cat.tryOther': 'Попробуйте изменить запрос',
     'p.sku': 'Артикул', 'p.availability': 'Наличие', 'p.inStock': 'В наличии', 'p.outOfStock': 'Нет в наличии', 'p.step': 'Фасовка',
@@ -43,7 +43,7 @@ const I18N = {
     'del.pickup': 'Самовывоз', 'del.pickupText': 'Забрать заказ можно по договорённости с менеджером.',
     'del.weight': 'Фасовка', 'del.weightText': 'Продукция фасуется упаковками примерно по 1 кг — фактический вес от 900 до 1100 г. Цена на сайте указана за 1 кг, сумма в корзине предварительная. Точную сумму по весу менеджер сообщит при подтверждении заказа.',
     'del.pay': 'Оплата', 'del.payText': 'Наличными или картой курьеру, BLIK, переводом на счёт.',
-    'del.store': 'Хранение', 'del.storeText': 'Копчёную рыбу и икру храните в холодильнике при +2…+6 °C. Вяленую и сушёную — в сухом прохладном месте. Замороженную продукцию — в морозильной камере при −18 °C, повторно не замораживать.',
+    'del.store': 'Хранение', 'del.storeText': 'Копчёную рыбу и икру храните в холодильнике при +2…+6 °C. Вяленую и сушёную — в сухом прохладном месте. Малосольную — в холодильнике при +2…+6 °C. Замороженную продукцию — в морозильной камере при −18 °C, повторно не замораживать.',
     'cart.title': 'Корзина', 'cart.empty': 'Корзина пуста', 'cart.emptyText': 'Загляните в каталог — там много вкусного.', 'cart.toCatalog': 'В каталог',
     'cart.checkout': 'Оформление заказа', 'f.name': 'Имя', 'f.phone': 'Телефон', 'f.email': 'E-mail', 'f.password': 'Пароль',
     'cart.courier': 'Курьер', 'cart.pickup': 'Самовывоз', 'cart.area': 'Район / город', 'cart.address': 'Адрес доставки', 'cart.addressPh': 'ул., дом, кв.',
@@ -66,7 +66,7 @@ const I18N = {
   pl: {
     'meta.title': 'SHUL.FISH — ryby wędzone, suszone i ikra w Warszawie',
     'meta.desc': 'SHUL.FISH — ryby wędzone, suszone i przekąski rybne premium, ikra czerwona i kawior z dostawą w Warszawie.',
-    'nav.catalog': 'Katalog', 'nav.smoked': 'Wędzone', 'nav.cured': 'Suszone', 'nav.dried': 'Przekąski', 'nav.caviar': 'Ikra', 'nav.frozen': 'Mrożonki', 'nav.delivery': 'Dostawa',
+    'nav.catalog': 'Katalog', 'nav.smoked': 'Wędzone', 'nav.cured': 'Suszone', 'nav.dried': 'Przekąski', 'nav.salted': 'Solone', 'nav.caviar': 'Ikra', 'nav.frozen': 'Mrożonki', 'nav.delivery': 'Dostawa',
     'nav.account': 'Moje konto', 'nav.cart': 'Koszyk', 'nav.menu': 'Menu', 'nav.admin': 'Panel zarządzania', 'nav.login': 'Zaloguj się',
     'nav.accountOf': 'Konto: {name}', 'lang.switch': 'Русский язык',
     'foot.tagline': 'Ryby wędzone, suszone, przekąski rybne i ikra. Premium quality.',
@@ -85,7 +85,7 @@ const I18N = {
     'home.c.smoked': 'Wędzone', 'home.c.smoked.s': 'Wędzone na gorąco i na zimno',
     'home.c.cured': 'Suszone', 'home.c.cured.s': 'Wobła, taranka, leszcz, ciosa',
     'home.c.dried': 'Przekąski', 'home.c.dried.s': 'Stynka, sardela, kałamarnica',
-    'home.c.caviar': 'Ikra', 'home.c.caviar.s': 'Czerwona ikra i kawior', 'home.c.frozen': 'Mrożonki', 'home.c.frozen.s': 'Ryby i owoce morza',
+    'home.c.caviar': 'Ikra', 'home.c.caviar.s': 'Czerwona ikra i kawior', 'home.c.salted': 'Lekko solone', 'home.c.salted.s': 'Śledź, łosoś, makrela', 'home.c.frozen': 'Mrożonki', 'home.c.frozen.s': 'Ryby i owoce morza',
     'cat.title': 'Katalog', 'cat.all': 'Wszystkie', 'cat.search': 'Szukaj…', 'cat.sortPop': 'Najpopularniejsze', 'cat.sortCheap': 'Od najtańszych',
     'cat.sortExp': 'Od najdroższych', 'cat.sortName': 'Według nazwy', 'cat.nothing': 'Nic nie znaleziono', 'cat.tryOther': 'Spróbuj zmienić zapytanie',
     'p.sku': 'Kod produktu', 'p.availability': 'Dostępność', 'p.inStock': 'Dostępny', 'p.outOfStock': 'Brak w magazynie', 'p.step': 'Opakowanie',
@@ -95,7 +95,7 @@ const I18N = {
     'del.pickup': 'Odbiór osobisty', 'del.pickupText': 'Zamówienie można odebrać po wcześniejszym uzgodnieniu z konsultantem.',
     'del.weight': 'Opakowania', 'del.weightText': 'Produkty pakujemy w opakowania ok. 1 kg — rzeczywista waga od 900 do 1100 g. Cena w sklepie dotyczy 1 kg, kwota w koszyku jest orientacyjna. Dokładną kwotę wg wagi konsultant poda przy potwierdzeniu zamówienia.',
     'del.pay': 'Płatność', 'del.payText': 'Gotówką lub kartą u kuriera, BLIK, przelewem na konto.',
-    'del.store': 'Przechowywanie', 'del.storeText': 'Ryby wędzone i ikrę przechowuj w lodówce w temp. +2…+6 °C. Ryby suszone i przekąski — w suchym, chłodnym miejscu. Mrożonki — w zamrażarce w temp. −18 °C, nie zamrażać ponownie po rozmrożeniu.',
+    'del.store': 'Przechowywanie', 'del.storeText': 'Ryby wędzone i ikrę przechowuj w lodówce w temp. +2…+6 °C. Ryby suszone i przekąski — w suchym, chłodnym miejscu. Ryby lekko solone — w lodówce w temp. +2…+6 °C. Mrożonki — w zamrażarce w temp. −18 °C, nie zamrażać ponownie po rozmrożeniu.',
     'cart.title': 'Koszyk', 'cart.empty': 'Koszyk jest pusty', 'cart.emptyText': 'Zajrzyj do katalogu — czeka tam wiele pyszności.', 'cart.toCatalog': 'Do katalogu',
     'cart.checkout': 'Składanie zamówienia', 'f.name': 'Imię', 'f.phone': 'Telefon', 'f.email': 'E-mail', 'f.password': 'Hasło',
     'cart.courier': 'Kurier', 'cart.pickup': 'Odbiór osobisty', 'cart.area': 'Dzielnica / miejscowość', 'cart.address': 'Adres dostawy', 'cart.addressPh': 'ulica, nr domu, nr mieszkania',
@@ -119,8 +119,8 @@ const I18N = {
 
 // Названия, которые приходят из справочников
 const CAT_NAMES = {
-  ru: { smoked: 'Копчёная рыба', cured: 'Вяленая рыба', dried: 'Сушёная рыба', caviar: 'Икра', frozen: 'Замороженная продукция', sets: 'Наборы' },
-  pl: { smoked: 'Ryby wędzone', cured: 'Ryby suszone', dried: 'Przekąski rybne', caviar: 'Ikra i kawior', frozen: 'Mrożonki', sets: 'Zestawy' },
+  ru: { smoked: 'Копчёная рыба', cured: 'Вяленая рыба', dried: 'Сушёная рыба', salted: 'Малосольная продукция', caviar: 'Икра', frozen: 'Замороженная продукция', sets: 'Наборы' },
+  pl: { smoked: 'Ryby wędzone', cured: 'Ryby suszone', dried: 'Przekąski rybne', salted: 'Lekko solone', caviar: 'Ikra i kawior', frozen: 'Mrożonki', sets: 'Zestawy' },
 };
 // Зона доставки (ключи совпадают с DELIVERY_AREAS на сервере)
 const DELIVERY_AREAS = [
