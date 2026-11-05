@@ -70,7 +70,7 @@ function fishIcon(size = 22) {
 }
 const ART_COLORS = {
   smoked: ['#e0a54a', '#8a5a22'], cured: ['#d8c08a', '#7a6640'], dried: ['#e6d4a0', '#8f7a48'],
-  caviar: ['#ff5a2a', '#9e1f0c'], sets: ['#f3d27a', '#a8802f'], frozen: ['#bfe6ff', '#4a7fa8'], salted: ['#f2a48c', '#a8503c'],
+  caviar: ['#ff5a2a', '#9e1f0c'], sets: ['#f3d27a', '#a8802f'], frozen: ['#bfe6ff', '#4a7fa8'], fresh: ['#9fd8c8', '#2f7f6a'], seafood: ['#ff9a7a', '#b8452a'], salted: ['#f2a48c', '#a8503c'],
 };
 function productArt(category, label = '') {
   const [c1, c2] = ART_COLORS[category] || ART_COLORS.smoked;
@@ -214,7 +214,7 @@ function bindAddButtons(products) {
 
 async function viewHome() {
   const { products } = await api('GET', '/api/products?featured=1');
-  const cats = ['smoked', 'cured', 'dried', 'salted', 'caviar', 'frozen'];
+  const cats = ['fresh', 'smoked', 'cured', 'dried', 'salted', 'caviar', 'seafood', 'frozen'];
   app.innerHTML = `
   <section class="hero">
     <div class="hero-text">

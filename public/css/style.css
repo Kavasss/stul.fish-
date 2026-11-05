@@ -82,7 +82,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav a:hover, .nav a.active { color: var(--gold-2); text-shadow: var(--gold-glow); }
 /* Средние экраны: пунктов меню много — сжимаем отступы, чтобы не налезать на логотип */
 @media (max-width: 1240px) and (min-width: 961px) {
-  .cats { grid-template-columns: repeat(3, 1fr); }
+  .cats { grid-template-columns: repeat(4, 1fr); }
   .nav { gap: 0; }
   .nav a { padding: 8px 7px; font-size: 13px; letter-spacing: .06em; }
 }
@@ -194,7 +194,7 @@ h2 { font-size: clamp(24px, 3vw, 34px); }
 .feature span { color: var(--muted); font-size: 13px; }
 
 /* Категории */
-.cats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+.cats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .cat {
   position: relative; overflow: hidden; border-radius: var(--radius); padding: 22px 18px 18px;
   border: 1px solid var(--line); background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.25)), var(--panel-solid);
@@ -387,7 +387,7 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
   .hero { grid-template-columns: 1fr; text-align: center; }
   .hero-sub, .kinds, .hero-cta { justify-content: center; }
   .hero-badge { width: min(80%, 360px); order: -1; }
-  .cats { grid-template-columns: repeat(3, 1fr); }
+  .cats { grid-template-columns: repeat(2, 1fr); }
   .product-page, .two-col { grid-template-columns: 1fr; }
   .admin-layout { grid-template-columns: 1fr; }
   .side { position: static; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
@@ -483,3 +483,19 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
 .tr-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; min-height: 16px; font-size: 12px; }
 .tr-state { font-size: 12px; text-transform: none; letter-spacing: 0; }
 .tr-again { font-size: 12px; margin-left: auto; color: var(--gold-2); }
+
+/* Выпадающее меню «Каталог» со всеми разделами */
+.nav-drop { position: relative; display: flex; }
+.nav-drop-head::after { content: ' ▾'; font-size: 11px; opacity: .8; }
+.nav-menu {
+  display: none; position: absolute; top: 100%; left: 0; z-index: 60; min-width: 240px; flex-direction: column;
+  padding: 8px; background: rgba(11,11,12,.98); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 40px rgba(0,0,0,.5);
+}
+.nav-drop:hover .nav-menu, .nav-drop:focus-within .nav-menu { display: flex; }
+.nav .nav-menu a { white-space: nowrap; letter-spacing: .06em; }
+@media (max-width: 960px) {
+  .nav-drop { flex-direction: column; }
+  .nav-drop-head::after { content: ''; }
+  .nav-menu { display: flex; position: static; min-width: 0; padding: 0 0 0 14px; background: none; border: 0; box-shadow: none; }
+  .nav-top { display: none; }
+}
