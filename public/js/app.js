@@ -362,7 +362,7 @@ function viewCart() {
   const me = state.me || {};
   app.innerHTML = `<h1>${t('cart.title')}</h1>
   <div class="two-col">
-    <div class="panel"><div id="cartRows"></div></div>
+    <div class="panel"><div id="cartRows"></div><div class="cart-row delivery-row" id="dRow"></div></div>
     <form class="panel glow form" id="checkout">
       <h3>${t('cart.checkout')}</h3>
       <label class="field">${t('f.name')}<input class="input" name="customer_name" required autocomplete="name" value="${esc(me.name || '')}"></label>
@@ -417,6 +417,15 @@ function viewCart() {
       : dq.state === 'error' ? `<span style="color:var(--warn)">${esc(dq.msg)}</span>`
       : `<span class="muted">${t('cart.dEnter')}</span>`;
     $('#total').textContent = zl(Math.round((goods + fee) * 100) / 100);
+    // Доставка — отдельной строкой в списке под товарами
+    const truck = '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6h11v9H2zM13 9h4l4 4v2h-8z"/><circle cx="6" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>';
+    const [title, detail, price] = pickup ? [t('cart.dRowPickup'), '', t('cart.dFree')]
+      : dq.state === 'ok' ? [t('cart.delivery'), esc(dq.fee > dq.km * dq.rate ? t('cart.dRowMin', { km: dq.km }) : t('cart.dRowKm', { km: dq.km, rate: dq.rate })), zl(dq.fee)]
+      : dq.state === 'loading' ? [t('cart.delivery'), t('cart.dCalc'), '…']
+      : dq.state === 'unknown' ? [t('cart.delivery'), t('cart.dUnknown'), '—']
+      : dq.state === 'error' ? [t('cart.delivery'), `<span style="color:var(--warn)">${esc(dq.msg)}</span>`, '—']
+      : [t('cart.delivery'), t('cart.dRowNoAddr'), '—'];
+    $('#dRow').innerHTML = `<div class="thumb d-ico">${truck}</div><div><b>${title}</b>${detail ? `<div class="muted">${detail}</div>` : ''}</div><div class="price" style="font-size:18px">${price}</div>`;
   }
   let quoteTimer = null, quoteSeq = 0;
   async function requote() {
