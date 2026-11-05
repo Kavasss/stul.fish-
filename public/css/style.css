@@ -294,6 +294,8 @@ label.field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
 
 /* ---------- Админка ---------- */
 .admin-layout { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: start; }
+/* широкие таблицы прокручиваются внутри своей рамки, а не растягивают всю страницу */
+.admin-layout > * { min-width: 0; }
 .side { position: sticky; top: 86px; display: grid; gap: 4px; padding: 12px; }
 .side .who { padding: 6px 10px 14px; border-bottom: 1px solid var(--line-soft); margin-bottom: 8px; }
 .side .who b { display: block; }
@@ -451,3 +453,28 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
 
 /* Переключатель языка */
 .lang-btn { font: 600 13px var(--head); letter-spacing: .08em; color: var(--gold-2); }
+
+/* Админка на телефоне: товары карточками вместо широкой таблицы */
+@media (max-width: 700px) {
+  #ptable, #ptable tbody { display: block; }
+  #ptable tr:first-child { display: none; }
+  #ptable tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 14px 12px; border-bottom: 1px solid var(--line-soft); }
+  #ptable td { display: block; border: 0; padding: 0; text-align: left; white-space: normal; }
+  #ptable td:first-child, #ptable td.actions-cell { grid-column: 1 / -1; }
+  #ptable td[data-l]::before { content: attr(data-l); display: block; font: 500 10px var(--head); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); margin-bottom: 2px; }
+  #ptable td.st-cell { align-self: end; }
+  #ptable td.actions-cell { display: flex; gap: 8px; margin-top: 4px; }
+  #ptable td.actions-cell .btn { flex: 1; }
+  .toolbar .left { width: 100%; }
+  .toolbar .left .input { flex: 1; width: auto !important; min-width: 0; }
+}
+/* Узкие телефоны: у сотрудников в шапке 5 кнопок — сжимаем, чтобы название не налезало */
+@media (max-width: 430px) {
+  .brand { gap: 8px; min-width: 0; }
+  .brand-name { font-size: 16px; }
+  .actions { gap: 5px; }
+  .btn-icon { width: 34px; height: 34px; }
+}
+@media (max-width: 360px) {
+  .brand-name { display: none; }
+}

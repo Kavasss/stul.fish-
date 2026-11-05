@@ -650,12 +650,12 @@ async function adminProducts(main) {
       <tr><th>Товар</th><th>Категория</th><th class="num">Цена</th>${can('inventory.view') ? '<th class="num">Себест.</th>' : ''}<th class="num">Остаток</th><th>Статус</th><th></th></tr>
       ${products.map((p) => `<tr data-name="${esc((p.name + ' ' + p.sku).toLowerCase())}">
         <td><div class="prod-cell"><div class="mini-thumb">${productImage(p)}</div><div><b>${esc(p.name)}</b><div class="muted" style="font-size:12px">${esc(p.sku)} · фото: ${p.images.length}</div></div></div></td>
-        <td>${esc(p.category_name)}</td>
-        <td class="num">${zl(p.price)}/${esc(p.unit)}</td>
-        ${can('inventory.view') ? `<td class="num muted">${zl(p.cost)}</td>` : ''}
-        <td class="num">${fmtQty(p.stock)} ${esc(p.unit)}</td>
-        <td>${!p.active ? '<span class="st off">Скрыт</span>' : p.stock <= 0 ? '<span class="st out">Нет</span>' : p.min_stock !== undefined && p.stock <= p.min_stock ? '<span class="st low">Мало</span>' : '<span class="st ok">В наличии</span>'}</td>
-        <td class="num">
+        <td data-l="Категория">${esc(p.category_name)}</td>
+        <td class="num" data-l="Цена">${zl(p.price)}/${p.piece_weight ? 'кг' : esc(p.unit)}${p.piece_weight ? `<div class="muted" style="font-size:12px">≈${fmtQty(p.piece_weight)} кг/шт</div>` : ''}</td>
+        ${can('inventory.view') ? `<td class="num muted" data-l="Себест.">${zl(p.cost)}</td>` : ''}
+        <td class="num" data-l="Остаток">${fmtQty(p.stock)} ${esc(p.unit)}</td>
+        <td class="st-cell">${!p.active ? '<span class="st off">Скрыт</span>' : p.stock <= 0 ? '<span class="st out">Нет</span>' : p.min_stock !== undefined && p.stock <= p.min_stock ? '<span class="st low">Мало</span>' : '<span class="st ok">В наличии</span>'}</td>
+        <td class="num actions-cell">
           ${can('stock.manage') ? `<button class="btn sm ghost" data-stock="${p.id}">Склад</button>` : ''}
           <button class="btn sm" data-edit="${p.id}">Изменить</button>
         </td></tr>`).join('')}
