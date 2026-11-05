@@ -7,6 +7,7 @@ const path = require('node:path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shulfish-weight-'));
 process.env.SEED_DEMO = '1';
+process.env.TRANSLATE_URL = 'off';
 process.env.GEOCODER_URL = 'off';
 process.env.ADMIN_PASSWORD = 'admin-test-pass';
 process.env.MANAGER_PASSWORD = 'manager-test-pass';
@@ -92,4 +93,20 @@ test('поштучно по цене за кг: сумма = штуки × ве�
   // пустое поле — снова обычный товар
   assert.equal((await admin('PUT', `/api/products/${p.id}`, { piece_weight: '' })).data.product.piece_weight, null);
   assert.equal((await admin('PUT', `/api/products/${p.id}`, { piece_weight: '-1' })).status, 400);
+});
+
+test('автоперевод названия: словарь рыб, доступ только сотрудникам', async () => {
+  const admin = client();
+  const customer = client();
+  await admin('POST', '/api/auth/login', { email: 'admin@shul.fish', password: 'admin-test-pass' });
+  await customer('POST', '/api/auth/register', { email: 'tr@example.com', name: 'T', password: '12345678', consent: true });
+  const tr = (text, kind = 'name') => admin('POST', '/api/translate', { text, kind });
+  assert.equal((await tr('Плотва с икрой')).data.text, 'Płoć z ikrą'); // не «karaluch»
+  assert.equal((await tr('Скумбрия холодного копчения')).data.text, 'Makrela wędzona na zimno');
+  assert.equal((await tr('Лосось малосольный')).data.text, 'Łosoś lekko solony');
+  assert.equal((await tr('Хек мороженный')).data.source, 'glossary');
+  // незнакомое и без онлайн-переводчика (TRANSLATE_URL=off) — понятная ошибка
+  assert.equal((await tr('Набор «Пивной»')).status, 502);
+  assert.equal((await customer('POST', '/api/translate', { text: 'Плотва' })).status, 403);
+  assert.equal((await client()('POST', '/api/translate', { text: 'Плотва' })).status, 401);
 });

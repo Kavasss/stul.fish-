@@ -8,6 +8,7 @@ const path = require('node:path');
 // Рабочий режим (без демо-каталога): при первом запуске приём заказов на паузе
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shulfish-pause-'));
 delete process.env.SEED_DEMO;
+process.env.TRANSLATE_URL = 'off';
 process.env.GEOCODER_URL = 'off';
 process.env.ADMIN_PASSWORD = 'admin-test-pass';
 process.env.MANAGER_PASSWORD = 'manager-test-pass';

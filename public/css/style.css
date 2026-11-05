@@ -478,3 +478,8 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
 @media (max-width: 360px) {
   .brand-name { display: none; }
 }
+
+/* автоперевод в редакторе товара */
+.tr-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; min-height: 16px; font-size: 12px; }
+.tr-state { font-size: 12px; text-transform: none; letter-spacing: 0; }
+.tr-again { font-size: 12px; margin-left: auto; color: var(--gold-2); }

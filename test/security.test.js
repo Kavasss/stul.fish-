@@ -17,6 +17,7 @@ const geo = http.createServer((req, res) => {
   const hit = /Daleka/.test(q) ? [{ lat: '52.45', lon: '21.06' }] : /Bliska/.test(q) ? [{ lat: '52.29', lon: '21.10' }] : /Srednia/.test(q) ? [{ lat: '52.2765', lon: '21.135' }] : [];
   res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(hit));
 }).listen(0);
+process.env.TRANSLATE_URL = 'off';
 process.env.GEOCODER_URL = `http://127.0.0.1:${geo.address().port}/search`;
 const { server } = require('../server.js');
 let base;

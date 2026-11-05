@@ -662,6 +662,8 @@ function applyMovement(product, type, qty, note, user, orderId = null, extra = {
 importStockPhotos();
 const { createSeo } = require('./seo.js');
 const seo = createSeo({ db, CATEGORIES, PUBLIC_DIR, SITE_URL: process.env.SITE_URL });
+const { createTranslator } = require('./translate.js');
+const translator = createTranslator();
 const { createSheetsSync } = require('./sheets-sync.js');
 const sheets = createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement, audit, tx });
 
@@ -847,6 +849,19 @@ route('DELETE', '/api/products/:id', ({ user, params }) => {
   if (p.sku) db.prepare('INSERT OR REPLACE INTO deleted_skus (sku, pushed) VALUES (?, 0)').run(p.sku);
   sheets.schedule();
   return { ok: true };
+});
+
+// --- Автоперевод RU → PL для редактора товара ---
+route('POST', '/api/translate', async ({ user, body }) => {
+  need(user);
+  if (!can(user, 'products.edit') && !can(user, 'products.create')) throw new HttpError(403, 'Недостаточно прав');
+  rateLimit('translate', user.id, 300, 3600e3, 'Слишком много запросов перевода. Попробуйте позже.');
+  const kind = body.kind === 'text' ? 'text' : 'name';
+  const text = str(body.text, kind === 'text' ? 3000 : 120);
+  if (!text) return { text: '', source: null };
+  const r = kind === 'text' ? await translator.text(text) : await translator.name(text);
+  if (!r) throw new HttpError(502, 'Не удалось перевести автоматически — впишите польский текст вручную');
+  return r;
 });
 
 // --- Фото ---

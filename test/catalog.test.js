@@ -16,7 +16,8 @@ for (const f of ['SF-003.png', 'SF-003_2.png', 'SF-012.png', 'SF-999.png', 'read
 before(() => {
   process.env.DATA_DIR = dataDir;
   process.env.SEED_DEMO = '1';
-  process.env.GEOCODER_URL = 'off';
+  process.env.TRANSLATE_URL = 'off';
+process.env.GEOCODER_URL = 'off';
   process.env.ADMIN_PASSWORD = 'admin-test-pass';
   process.env.MANAGER_PASSWORD = 'manager-test-pass';
   process.env.STOCK_PHOTOS_DIR = photos;

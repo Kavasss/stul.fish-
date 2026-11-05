@@ -636,6 +636,44 @@ function adminDashboard(main, stats) {
   });
 }
 
+/* ---------- Автоперевод названия и описания на польский ---------- */
+// Польское поле заполняется само, пока его не правили вручную. Ручную правку не перезаписываем.
+function setupAutoTranslate(f) {
+  const pairs = [
+    { ru: f.name, pl: f.name_pl, kind: 'name', st: $('#trName') },
+    { ru: f.description, pl: f.description_pl, kind: 'text', st: $('#trDesc') },
+  ];
+  for (const x of pairs) {
+    // поле считается «автоматическим», если оно пустое или в нём наш прошлый перевод
+    let auto = !x.pl.value.trim(), lastAuto = '', timer = null, seq = 0;
+    const show = (html) => { x.st.innerHTML = html; };
+    const run = async () => {
+      const text = x.ru.value.trim();
+      if (!auto) return;
+      if (!text) { x.pl.value = ''; lastAuto = ''; show(''); return; }
+      const my = ++seq;
+      show('· перевожу…');
+      try {
+        const r = await api('POST', '/api/translate', { text, kind: x.kind });
+        if (my !== seq || !auto) return;
+        x.pl.value = r.text; lastAuto = r.text;
+        show(r.source === 'glossary' ? '· ✓ переведено по словарю' : '· ✓ переведено автоматически — проверьте');
+      } catch (err) { if (my === seq) show(`· <span style="color:var(--warn)">${esc(err.message)}</span>`); }
+    };
+    x.ru.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, x.kind === 'name' ? 600 : 1200); });
+    x.ru.addEventListener('change', () => { clearTimeout(timer); run(); });
+    x.pl.addEventListener('input', () => {
+      auto = !x.pl.value.trim() || x.pl.value === lastAuto;
+      show(auto ? '' : '· изменено вручную');
+    });
+    // кнопка «перевести заново» — когда польский текст правили вручную
+    const again = document.createElement('a');
+    again.href = '#'; again.textContent = '↻ перевести заново'; again.className = 'tr-again';
+    again.addEventListener('click', (e) => { e.preventDefault(); auto = true; run(); });
+    x.st.after(again);
+  }
+}
+
 /* ---------- Товары ---------- */
 async function adminProducts(main) {
   const { products } = await api('GET', '/api/products?all=1');
@@ -676,16 +714,16 @@ async function editProduct(id) {
   const m = state.meta;
   openModal(`<h2>${id ? 'Редактирование товара' : 'Новый товар'}</h2>
     <form class="form" id="pform">
-      <div class="form-row">
+      <div class="form-row" style="align-items:start">
         <label class="field">Название 🇷🇺<input class="input" name="name" required value="${esc(p.name)}"></label>
-        <label class="field">Название 🇵🇱 (Nazwa)<input class="input" name="name_pl" placeholder="если пусто — покажем русское" value="${esc(p.name_pl || '')}"></label>
+        <label class="field">Название 🇵🇱 (Nazwa)<input class="input" name="name_pl" placeholder="переведётся автоматически" value="${esc(p.name_pl || '')}"><span class="tr-row"><span class="muted tr-state" id="trName"></span></span></label>
       </div>
       <div class="form-row">
         <label class="field">Категория<select class="input" name="category">${Object.entries(m.categories).map(([k, v]) => `<option value="${k}" ${k === p.category ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
         <label class="field">Артикул<input class="input" name="sku" value="${esc(p.sku)}"></label>
       </div>
       <label class="field">Описание 🇷🇺<textarea class="input" name="description">${esc(p.description)}</textarea></label>
-      <label class="field">Описание 🇵🇱 (Opis)<textarea class="input" name="description_pl" placeholder="если пусто — покажем русское">${esc(p.description_pl || '')}</textarea></label>
+      <label class="field">Описание 🇵🇱 (Opis)<textarea class="input" name="description_pl" placeholder="переведётся автоматически">${esc(p.description_pl || '')}</textarea><span class="tr-row"><span class="muted tr-state" id="trDesc"></span></span></label>
       <div class="form-row">
         <label class="field">Цена продажи, zł${priceLock ? ' 🔒' : ''}<input class="input" name="price" type="number" step="0.01" min="0" value="${p.price}" ${priceLock ? 'disabled' : ''}></label>
         ${'cost' in p || !id ? `<label class="field">Себестоимость, zł${priceLock ? ' 🔒' : ''}<input class="input" name="cost" type="number" step="0.01" min="0" value="${p.cost ?? 0}" ${priceLock ? 'disabled' : ''}></label>` : '<div></div>'}
@@ -713,6 +751,7 @@ async function editProduct(id) {
       </div>
     </form>`, (root) => {
     if (id && can('photos.manage')) renderPhotos(p);
+    setupAutoTranslate($('#pform', root));
     $('#pform', root).addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
