@@ -386,8 +386,12 @@ const SEED_PL = {
   'SF-015': ['Zestaw „Do piwa”', 'Wobła, stynka, kałamarnica i sardela — wszystko na wieczór z przyjaciółmi.'],
   'SF-016': ['Zestaw prezentowy „Kawiorowy”', 'Czerwona ikra i czarny kawior w eleganckim opakowaniu prezentowym z kartką.'],
 };
-for (const [sku, [n, d]] of Object.entries(SEED_PL)) {
-  db.prepare("UPDATE products SET name_pl = ?, description_pl = ? WHERE sku = ? AND name_pl = '' AND description_pl = ''").run(n, d, sku);
+// Польские тексты демо-каталога — только для демо (SEED_DEMO=1). Раньше они подставлялись по артикулу
+// и на рабочем сайте: новые товары с теми же артикулами SF-0xx получали чужие польские названия.
+if (process.env.SEED_DEMO === '1') {
+  for (const [sku, [n, d]] of Object.entries(SEED_PL)) {
+    db.prepare("UPDATE products SET name_pl = ?, description_pl = ? WHERE sku = ? AND name_pl = '' AND description_pl = ''").run(n, d, sku);
+  }
 }
 
 /*
@@ -664,8 +668,44 @@ function applyMovement(product, type, qty, note, user, orderId = null, extra = {
 importStockPhotos();
 const { createSeo } = require('./seo.js');
 const seo = createSeo({ db, CATEGORIES, PUBLIC_DIR, SITE_URL: process.env.SITE_URL });
-const { createTranslator } = require('./translate.js');
+const { createTranslator, nameByGlossary } = require('./translate.js');
 const translator = createTranslator();
+
+/*
+ * Однократно на рабочем сайте: убрать демо-переводы, ошибочно подставленные по артикулу,
+ * и перевести такие товары заново из их русских названий и описаний.
+ * Название — сразу по словарю (или онлайн в фоне), описание — онлайн в фоне.
+ */
+if (process.env.SEED_DEMO !== '1' && !db.prepare("SELECT 1 FROM settings WHERE key = 'pl_fix_v1'").get()) {
+  const wrong = [];
+  for (const p of db.prepare('SELECT * FROM products').all()) {
+    const seed = SEED_PL[p.sku];
+    if (!seed) continue;
+    const badName = p.name_pl === seed[0], badDesc = p.description_pl === seed[1];
+    if (!badName && !badDesc) continue;
+    const name_pl = badName ? (nameByGlossary(p.name) || '') : p.name_pl;
+    const description_pl = badDesc ? '' : p.description_pl;
+    db.prepare("UPDATE products SET name_pl = ?, description_pl = ?, updated_at = datetime('now') WHERE id = ?").run(name_pl, description_pl, p.id);
+    wrong.push({ id: p.id, name: p.name, needName: badName && !name_pl, needDesc: badDesc && !!p.description });
+  }
+  if (wrong.length) audit({ id: null, name: 'Система', role: 'auto' }, 'Исправлены польские переводы', wrong.map((w) => `#${w.id} ${w.name}`).join(', '));
+  db.prepare("INSERT INTO settings (key, value) VALUES ('pl_fix_v1', ?)").run(new Date().toISOString());
+  // онлайн-перевод того, что не покрыл словарь, — в фоне, не задерживая запуск
+  (async () => {
+    for (const w of wrong) {
+      const p = db.prepare('SELECT * FROM products WHERE id = ?').get(w.id);
+      if (!p) continue;
+      if (w.needName && !p.name_pl) {
+        const r = await translator.name(p.name);
+        if (r) db.prepare('UPDATE products SET name_pl = ? WHERE id = ? AND name_pl = \'\'').run(r.text.slice(0, 120), p.id);
+      }
+      if (w.needDesc && !p.description_pl && p.description) {
+        const r = await translator.text(p.description);
+        if (r) db.prepare('UPDATE products SET description_pl = ? WHERE id = ? AND description_pl = \'\'').run(r.text.slice(0, 3000), p.id);
+      }
+    }
+  })().catch((e) => console.error('Перевод товаров:', e.message));
+}
 const { createSheetsSync } = require('./sheets-sync.js');
 const sheets = createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement, audit, tx });
 
