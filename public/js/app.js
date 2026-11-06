@@ -200,7 +200,7 @@ function productCard(p) {
       <div class="card-desc">${esc(pDesc(p))}</div>
       <div class="card-foot">
         <div class="price">${zl(p.price)} <small>/ ${esc(priceUnit(p))}</small></div>
-        <button class="btn sm primary" data-add="${p.id}" ${p.in_stock ? '' : 'disabled'}>${p.in_stock ? t('card.toCart') : t('card.none')}</button>
+        <button class="btn sm cart" data-add="${p.id}" ${p.in_stock ? '' : 'disabled'}>${p.in_stock ? `<svg class="cart-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 4h2.2l2.1 10.2a1.6 1.6 0 0 0 1.6 1.3h8.3a1.6 1.6 0 0 0 1.6-1.2L20.5 8H6.3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9.5" cy="19.5" r="1.4" fill="currentColor"/><circle cx="17" cy="19.5" r="1.4" fill="currentColor"/></svg>${t('card.toCart')}` : t('card.none')}</button>
       </div>
     </div>
   </article>`;
@@ -308,7 +308,7 @@ async function viewProduct(id) {
         </dl>
         ${p.in_stock ? `<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
           <div class="qty"><button id="minus">−</button><input id="qty" value="${step}" inputmode="decimal"><button id="plus">+</button></div>
-          <button class="btn primary" id="buy">${t('card.toCart')}</button>
+          <button class="btn cart" id="buy"><svg class="cart-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 4h2.2l2.1 10.2a1.6 1.6 0 0 0 1.6 1.3h8.3a1.6 1.6 0 0 0 1.6-1.2L20.5 8H6.3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9.5" cy="19.5" r="1.4" fill="currentColor"/><circle cx="17" cy="19.5" r="1.4" fill="currentColor"/></svg>${t('card.toCart')}</button>
         </div>` : ''}
         ${can('products.edit') ? `<p style="margin-top:22px"><a class="btn sm ghost" href="/admin/products" data-edit="${p.id}">${t('p.edit')}</a></p>` : ''}
       </div>
