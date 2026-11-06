@@ -499,3 +499,54 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
   .nav-menu { display: flex; position: static; min-width: 0; padding: 0 0 0 14px; background: none; border: 0; box-shadow: none; }
   .nav-top { display: none; }
 }
+
+/* ====== ДЕМО: океан с рыбками на фоне ====== */
+.bg-grid {
+  background:
+    linear-gradient(180deg, rgba(4,12,18,.35) 0%, rgba(4,10,14,.62) 45%, rgba(6,8,10,.9) 100%),
+    url(/img/ocean.jpg) center top / cover no-repeat, #06222b;
+}
+.bg-glow {
+  background:
+    radial-gradient(700px 380px at 85% -5%, rgba(212,168,75,.10), transparent 70%),
+    conic-gradient(from 200deg at 30% -10%, transparent 0deg, rgba(180,240,255,.06) 8deg, transparent 16deg, rgba(180,240,255,.05) 26deg, transparent 34deg);
+  animation: rays 9s ease-in-out infinite alternate;
+}
+@keyframes rays { from { opacity: .6; } to { opacity: 1; } }
+.ocean { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.fish { position: absolute; left: -160px; opacity: .55; filter: drop-shadow(0 6px 10px rgba(0,0,0,.35)); will-change: transform; }
+.fish svg { width: 100%; height: auto; display: block; animation: wiggle 1.2s ease-in-out infinite alternate; transform-origin: 70% 50%; }
+@keyframes wiggle { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
+/* направление: рыба нарисована мордой влево, поэтому плывёт справа налево */
+@keyframes swimL { from { transform: translate(calc(100vw + 320px), 0); } 50% { transform: translate(50vw, -26px); } to { transform: translate(-200px, 8px); } }
+@keyframes swimR { from { transform: translate(-200px, 0) scaleX(-1); } 50% { transform: translate(50vw, 22px) scaleX(-1); } to { transform: translate(calc(100vw + 320px), -6px) scaleX(-1); } }
+.f1 { top: 18%; width: 110px; animation: swimL 38s linear infinite; }
+.f2 { top: 34%; width: 70px;  animation: swimR 29s linear infinite -8s; opacity: .45; }
+.f3 { top: 52%; width: 140px; animation: swimL 47s linear infinite -20s; opacity: .4; }
+.f4 { top: 66%; width: 60px;  animation: swimR 24s linear infinite -15s; opacity: .5; }
+.f5 { top: 80%; width: 95px;  animation: swimL 34s linear infinite -5s; }
+.f6 { top: 9%;  width: 50px;  animation: swimR 21s linear infinite -3s; opacity: .35; }
+.f7 { top: 44%; width: 80px;  animation: swimL 31s linear infinite -26s; opacity: .45; }
+.b { position: absolute; bottom: -20px; width: 8px; height: 8px; border-radius: 50%;
+  border: 1px solid rgba(200,245,255,.55); background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.6), rgba(255,255,255,.05) 60%);
+  animation: rise 14s linear infinite; }
+@keyframes rise { from { transform: translate(0, 0); opacity: 0; } 10% { opacity: .8; } to { transform: translate(18px, -110vh); opacity: 0; } }
+.b1 { left: 6%; width: 6px; height: 6px; animation-duration: 13s; animation-delay: -2s; }
+.b2 { left: 14%; width: 10px; height: 10px; animation-duration: 17s; animation-delay: -9s; }
+.b3 { left: 22%; width: 5px; height: 5px; animation-duration: 11s; animation-delay: -4s; }
+.b4 { left: 31%; width: 8px; height: 8px; animation-duration: 15s; animation-delay: -12s; }
+.b5 { left: 39%; width: 12px; height: 12px; animation-duration: 19s; animation-delay: -1s; }
+.b6 { left: 47%; width: 6px; height: 6px; animation-duration: 12s; animation-delay: -7s; }
+.b7 { left: 55%; width: 9px; height: 9px; animation-duration: 16s; animation-delay: -3s; }
+.b8 { left: 63%; width: 5px; height: 5px; animation-duration: 10s; animation-delay: -8s; }
+.b9 { left: 71%; width: 11px; height: 11px; animation-duration: 18s; animation-delay: -5s; }
+.b10 { left: 78%; width: 7px; height: 7px; animation-duration: 14s; animation-delay: -11s; }
+.b11 { left: 84%; width: 5px; height: 5px; animation-duration: 12s; animation-delay: -6s; }
+.b12 { left: 90%; width: 10px; height: 10px; animation-duration: 17s; animation-delay: -2s; }
+.b13 { left: 95%; width: 6px; height: 6px; animation-duration: 13s; animation-delay: -9s; }
+.b14 { left: 3%; width: 8px; height: 8px; animation-duration: 15s; animation-delay: -13s; }
+
+/* полупрозрачные панели, чтобы океан просвечивал */
+.panel, .card, .cat { backdrop-filter: blur(6px); }
+@media (prefers-reduced-motion: reduce) { .fish, .fish svg, .b, .bg-glow { animation: none !important; } .b { display: none; } }
+@media (max-width: 700px) { .f3, .f7, .f6 { display: none; } .fish { opacity: .4; } }
