@@ -10,7 +10,7 @@
 const crypto = require('node:crypto');
 
 const OP_LABEL = { in: 'Приход', out: 'Расход', writeoff: 'Списание', adjust: 'Корректировка', sale: 'Продажа', return: 'Возврат' };
-const OP_TYPE = Object.fromEntries(Object.entries(OP_LABEL).map(([k, v]) => [v.toLowerCase(), k]));
+const OP_TYPE = Object.assign(Object.create(null), Object.fromEntries(Object.entries(OP_LABEL).map(([k, v]) => [v.toLowerCase(), k])));
 const CHUNK = { products: 300, movements: 500, orders: 300 };
 
 function createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement, audit, tx, log = console }) {
@@ -18,7 +18,7 @@ function createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement
   const SECRET = process.env.SHEETS_SECRET || '';
   const INTERVAL = Math.max(30, Number(process.env.SHEETS_SYNC_INTERVAL) || 120) * 1000;
   const configured = Boolean(URL_ && SECRET);
-  const CAT_BY_LABEL = Object.fromEntries(Object.entries(CATEGORIES).map(([k, v]) => [v.toLowerCase(), k]));
+  const CAT_BY_LABEL = Object.assign(Object.create(null), Object.fromEntries(Object.entries(CATEGORIES).map(([k, v]) => [v.toLowerCase(), k])));
   const SHEET_USER = { id: null, name: 'Google Таблица', role: 'sheet' };
 
   const getSetting = (k) => db.prepare('SELECT value FROM settings WHERE key = ?').get(k)?.value ?? null;

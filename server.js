@@ -89,10 +89,13 @@ function distanceKm([lat1, lon1], [lat2, lon2]) {
 // Не чаще 1 запроса в секунду (правила Nominatim), результаты кэшируются
 const geoCache = new Map();
 let geoQueue = Promise.resolve();
+let geoPending = 0;
 function geocode(street, city) {
   if (GEOCODER_URL === 'off') return Promise.resolve(null);
   const key = `${street}|${city}`.toLowerCase();
   if (geoCache.has(key)) return Promise.resolve(geoCache.get(key));
+  if (geoPending >= 15) return Promise.resolve(null); // наплыв запросов — не держим покупателя в очереди
+  geoPending++;
   const run = geoQueue.then(async () => {
     const url = `${GEOCODER_URL}?format=json&limit=1&countrycodes=pl&street=${encodeURIComponent(street)}&city=${encodeURIComponent(city)}` +
       // ищем только вокруг Варшавы, иначе «Zielonka» находится в другом конце Польши
@@ -110,7 +113,7 @@ function geocode(street, city) {
       return null;
     } catch { return null; }
   });
-  geoQueue = run.then(() => new Promise((r) => setTimeout(r, 1100)));
+  geoQueue = run.then(() => new Promise((r) => setTimeout(r, 1100))).finally(() => { geoPending--; });
   return run;
 }
 const ORDER_STATUSES = {
@@ -121,6 +124,9 @@ const ORDER_STATUSES = {
   done: 'Выполнен',
   cancelled: 'Отменён',
 };
+// Справочники без прототипа: иначе ключи вроде «constructor» или «__proto__» проходят проверку
+// «есть ли такая категория/статус/район» (CATEGORIES['constructor'] — это функция Object).
+for (const d of [CATEGORIES, PERMISSIONS, MOVEMENT_TYPES, DELIVERY_AREAS, ORDER_STATUSES]) Object.setPrototypeOf(d, null);
 
 /* ------------------------------------------------------------------ */
 /* Схема БД                                                             */

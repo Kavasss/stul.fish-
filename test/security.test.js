@@ -121,3 +121,11 @@ test('стоимость доставки: 2 zł за начатый км, ми�
   assert.equal(p.delivery_fee, 0);
   assert.equal(p.grand_total, p.total);
 });
+
+test('ключи прототипа («constructor», «__proto__») не считаются категорией или районом', async () => {
+  assert.equal((await fetch(base + '/catalog/constructor')).status, 404);
+  for (const area of ['constructor', '__proto__', 'toString']) {
+    const r = await fetch(base + '/api/delivery/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ area, address: 'Testowa 1' }) });
+    assert.equal(r.status, 400, area);
+  }
+});
