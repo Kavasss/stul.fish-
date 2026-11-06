@@ -110,3 +110,17 @@ test('автоперевод названия: словарь рыб, досту
   assert.equal((await customer('POST', '/api/translate', { text: 'Плотва' })).status, 403);
   assert.equal((await client()('POST', '/api/translate', { text: 'Плотва' })).status, 401);
 });
+
+test('польское название заполняется само при создании и при смене русского; ручное не трогается', async () => {
+  const admin = client();
+  await admin('POST', '/api/auth/login', { email: 'admin@shul.fish', password: 'admin-test-pass' });
+  const p = (await admin('POST', '/api/products', { name: 'Хек мороженный', category: 'frozen', price: 25 })).data.product;
+  assert.equal(p.name_pl, 'Morszczuk mrożony');
+  // переименовали по-русски — автоперевод обновился
+  assert.equal((await admin('PUT', `/api/products/${p.id}`, { name: 'Треска мороженая' })).data.product.name_pl, 'Dorsz mrożony');
+  // поправили польское вручную — при смене русского не перезаписывается
+  await admin('PUT', `/api/products/${p.id}`, { name_pl: 'Dorsz atlantycki mrożony' });
+  assert.equal((await admin('PUT', `/api/products/${p.id}`, { name: 'Треска свежая' })).data.product.name_pl, 'Dorsz atlantycki mrożony');
+  // очистили польское поле — заполняется снова
+  assert.equal((await admin('PUT', `/api/products/${p.id}`, { name_pl: '' })).data.product.name_pl, 'Dorsz świeży');
+});

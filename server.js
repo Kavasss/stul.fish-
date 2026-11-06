@@ -238,6 +238,13 @@ addColumn('orders', 'delivery_fee', 'INTEGER'); // стоимость доста
 addColumn('order_items', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 // Поштучная продажа по цене за кг: piece_weight — примерный вес 1 шт., кг. NULL — обычный товар (цена за единицу).
 addColumn('products', 'piece_weight', 'REAL');
+// Автоперевод на польский: последний автоматический перевод и русский текст, из которого он сделан.
+// Если польское поле совпадает с автопереводом — его можно обновлять при смене русского текста;
+// если поле правили вручную — не трогаем.
+addColumn('products', 'name_pl_auto', "TEXT NOT NULL DEFAULT ''");
+addColumn('products', 'name_pl_src', "TEXT NOT NULL DEFAULT ''");
+addColumn('products', 'description_pl_auto', "TEXT NOT NULL DEFAULT ''");
+addColumn('products', 'description_pl_src', "TEXT NOT NULL DEFAULT ''");
 addColumn('order_items', 'piece_weight', 'REAL');
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mov_sheet_key ON stock_movements(sheet_key) WHERE sheet_key IS NOT NULL;
 UPDATE stock_movements SET product_sku = COALESCE((SELECT sku FROM products WHERE products.id = stock_movements.product_id), '') WHERE product_sku = '';`);
@@ -633,6 +640,7 @@ function shapeProduct(p, imgs, user) {
     out.stock = p.stock;
     out.active = !!p.active;
     out.updated_at = p.updated_at;
+    out.name_pl_auto = p.name_pl_auto; out.description_pl_auto = p.description_pl_auto;
   }
   if (can(user, 'inventory.view') || can(user, 'products.price')) {
     out.cost = p.cost / 100;
@@ -686,6 +694,7 @@ if (process.env.SEED_DEMO !== '1' && !db.prepare("SELECT 1 FROM settings WHERE k
     const name_pl = badName ? (nameByGlossary(p.name) || '') : p.name_pl;
     const description_pl = badDesc ? '' : p.description_pl;
     db.prepare("UPDATE products SET name_pl = ?, description_pl = ?, updated_at = datetime('now') WHERE id = ?").run(name_pl, description_pl, p.id);
+    if (badName && name_pl) db.prepare('UPDATE products SET name_pl_auto = ?, name_pl_src = ? WHERE id = ?').run(name_pl, p.name, p.id);
     wrong.push({ id: p.id, name: p.name, needName: badName && !name_pl, needDesc: badDesc && !!p.description });
   }
   if (wrong.length) audit({ id: null, name: 'Система', role: 'auto' }, 'Исправлены польские переводы', wrong.map((w) => `#${w.id} ${w.name}`).join(', '));
@@ -706,6 +715,60 @@ if (process.env.SEED_DEMO !== '1' && !db.prepare("SELECT 1 FROM settings WHERE k
     }
   })().catch((e) => console.error('Перевод товаров:', e.message));
 }
+/*
+ * Автоматический польский перевод названия и описания товара.
+ * Заполняет пустое польское поле и обновляет автоперевод, если сменился русский текст.
+ * Ручной польский текст не трогает. Название по словарю — сразу, остальное онлайн — в фоне.
+ */
+function plNeeds(p, field) {
+  const ru = p[field], pl = p[field + '_pl'], auto = p[field + '_pl_auto'], src = p[field + '_pl_src'];
+  if (!ru) return false;
+  if (!pl) return true;
+  return pl === auto && src !== ru; // наш автоперевод устарел
+}
+function setPl(id, field, text, ru) {
+  db.prepare(`UPDATE products SET ${field}_pl = ?, ${field}_pl_auto = ?, ${field}_pl_src = ? WHERE id = ?`).run(text, text, ru, id);
+}
+const plQueue = new Set();
+let plRunning = false;
+function autoPl(id) {
+  const p = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  if (!p) return;
+  if (plNeeds(p, 'name')) {
+    const g = nameByGlossary(p.name);
+    if (g) setPl(id, 'name', g.slice(0, 120), p.name); else plQueue.add(id);
+  }
+  if (plNeeds(p, 'description')) plQueue.add(id);
+  runPlQueue();
+}
+async function runPlQueue() {
+  if (plRunning) return;
+  plRunning = true;
+  try {
+    while (plQueue.size) {
+      const id = plQueue.values().next().value;
+      plQueue.delete(id);
+      for (const field of ['name', 'description']) {
+        const p = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+        if (!p || !plNeeds(p, field)) continue;
+        const r = field === 'name' ? await translator.name(p.name) : await translator.text(p.description);
+        const now = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+        // за время перевода текст могли поменять — сохраняем, только если исходник тот же
+        if (r && now && now[field] === p[field] && plNeeds(now, field)) setPl(id, field, r.text.slice(0, field === 'name' ? 120 : 3000), p[field]);
+      }
+    }
+  } catch (e) { console.error('Автоперевод:', e.message); } finally { plRunning = false; }
+}
+// При запуске и раз в 15 минут — товары, добавленные через Google Таблицу или без перевода
+function sweepPl() {
+  try { sweepPlNow(); } catch (e) { if (!/not open/.test(e.message)) console.error('Автоперевод:', e.message); }
+}
+function sweepPlNow() {
+  for (const p of db.prepare("SELECT id FROM products WHERE (name != '' AND name_pl = '') OR (description != '' AND description_pl = '') OR (name_pl = name_pl_auto AND name_pl != '' AND name_pl_src != name) OR (description_pl = description_pl_auto AND description_pl != '' AND description_pl_src != description)").all()) autoPl(p.id);
+}
+setTimeout(sweepPl, 3000).unref();
+setInterval(sweepPl, 15 * 60e3).unref();
+
 const { createSheetsSync } = require('./sheets-sync.js');
 const sheets = createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement, audit, tx });
 
@@ -827,6 +890,8 @@ function productFields(body, user, existing) {
   if ('description' in body) f.description = str(body.description, 3000);
   if ('name_pl' in body) f.name_pl = str(body.name_pl, 120);
   if ('description_pl' in body) f.description_pl = str(body.description_pl, 3000);
+  if (body.name_pl_auto === true && f.name_pl) { f.name_pl_auto = f.name_pl; f.name_pl_src = f.name ?? existing?.name ?? ''; }
+  if (body.description_pl_auto === true && f.description_pl) { f.description_pl_auto = f.description_pl; f.description_pl_src = f.description ?? existing?.description ?? ''; }
   if ('unit' in body) { if (!UNITS.includes(body.unit)) throw new HttpError(400, 'Неизвестная единица'); f.unit = body.unit; }
   if ('min_stock' in body) f.min_stock = round3(num(body.min_stock, { min: 0, max: 1e6, name: 'минимальный остаток' }));
   if ('piece_weight' in body) {
@@ -862,6 +927,7 @@ route('POST', '/api/products', ({ user, body }) => {
     return p.id;
   });
   audit(user, 'Создан товар', `#${id} ${f.name}`);
+  autoPl(id);
   sheets.schedule();
   return { product: shapeProduct(getProductRow(id), {}, user) };
 });
@@ -877,6 +943,7 @@ route('PUT', '/api/products/:id', ({ user, params, body }) => {
     // старый артикул в таблице помечаем удалённым, чтобы он не «воскрес» как новый товар
     if (f.sku && p.sku && f.sku !== p.sku) db.prepare('INSERT OR REPLACE INTO deleted_skus (sku, pushed) VALUES (?, 0)').run(p.sku);
     sheets.schedule();
+    autoPl(p.id);
   }
   const fresh = getProductRow(p.id);
   return { product: shapeProduct(fresh, imagesFor([p.id]), user) };

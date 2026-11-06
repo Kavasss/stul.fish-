@@ -640,12 +640,15 @@ function adminDashboard(main, stats) {
 // Польское поле заполняется само, пока его не правили вручную. Ручную правку не перезаписываем.
 function setupAutoTranslate(f) {
   const pairs = [
-    { ru: f.name, pl: f.name_pl, kind: 'name', st: $('#trName') },
-    { ru: f.description, pl: f.description_pl, kind: 'text', st: $('#trDesc') },
+    { ru: f.name, pl: f.name_pl, kind: 'name', st: $('#trName'), saved: f.dataset.nameAuto || '' },
+    { ru: f.description, pl: f.description_pl, kind: 'text', st: $('#trDesc'), saved: f.dataset.descAuto || '' },
   ];
+  f._plAuto = {};
   for (const x of pairs) {
     // поле считается «автоматическим», если оно пустое или в нём наш прошлый перевод
-    let auto = !x.pl.value.trim(), lastAuto = '', timer = null, seq = 0;
+    let auto = !x.pl.value.trim() || (!!x.saved && x.pl.value === x.saved), lastAuto = auto ? x.pl.value : '', timer = null, seq = 0;
+    const mark = () => { f._plAuto[x.kind] = auto && !!x.pl.value.trim(); };
+    mark();
     const show = (html) => { x.st.innerHTML = html; };
     const run = async () => {
       const text = x.ru.value.trim();
@@ -656,7 +659,7 @@ function setupAutoTranslate(f) {
       try {
         const r = await api('POST', '/api/translate', { text, kind: x.kind });
         if (my !== seq || !auto) return;
-        x.pl.value = r.text; lastAuto = r.text;
+        x.pl.value = r.text; lastAuto = r.text; mark();
         show(r.source === 'glossary' ? '· ✓ переведено по словарю' : '· ✓ переведено автоматически — проверьте');
       } catch (err) { if (my === seq) show(`· <span style="color:var(--warn)">${esc(err.message)}</span>`); }
     };
@@ -664,6 +667,7 @@ function setupAutoTranslate(f) {
     x.ru.addEventListener('change', () => { clearTimeout(timer); run(); });
     x.pl.addEventListener('input', () => {
       auto = !x.pl.value.trim() || x.pl.value === lastAuto;
+      mark();
       show(auto ? '' : '· изменено вручную');
     });
     // кнопка «перевести заново» — когда польский текст правили вручную
@@ -713,7 +717,7 @@ async function editProduct(id) {
   const priceLock = !can('products.price');
   const m = state.meta;
   openModal(`<h2>${id ? 'Редактирование товара' : 'Новый товар'}</h2>
-    <form class="form" id="pform">
+    <form class="form" id="pform" data-name-auto="${esc(p.name_pl_auto || '')}" data-desc-auto="${esc(p.description_pl_auto || '')}">
       <div class="form-row" style="align-items:start">
         <label class="field">Название 🇷🇺<input class="input" name="name" required value="${esc(p.name)}"></label>
         <label class="field">Название 🇵🇱 (Nazwa)<input class="input" name="name_pl" placeholder="переведётся автоматически" value="${esc(p.name_pl || '')}"><span class="tr-row"><span class="muted tr-state" id="trName"></span></span></label>
@@ -758,6 +762,7 @@ async function editProduct(id) {
       const body = {
         name: f.name.value, sku: f.sku.value, category: f.category.value, description: f.description.value,
         name_pl: f.name_pl.value, description_pl: f.description_pl.value,
+        name_pl_auto: !!f._plAuto?.name, description_pl_auto: !!f._plAuto?.text,
         unit: f.unit.value, min_stock: f.min_stock.value || 0, badge: f.badge.value, piece_weight: f.piece_weight.value,
         active: f.active.checked, featured: f.featured.checked,
       };

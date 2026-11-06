@@ -82,6 +82,9 @@ const ADJ = [
   [/^(морож[её]нн?(ый|ая|ое|ые)|заморож[её]нн?(ый|ая|ое|ые)|мороженн?(ый|ая|ое|ые))$/, (g) => `mrożon${end(g)}`],
   [/^(маринованн?(ый|ая|ое|ые))$/, (g) => `marynowan${end(g)}`],
   [/^(охлажд[её]нн?(ый|ая|ое|ые))$/, (g) => `schłodzon${end(g)}`],
+  [/^(свеж(ий|ая|ее|ие))$/, (g) => `śwież${end(g)}`],
+  [/^(жарен(ый|ая|ое|ые)|жар[её]нн?(ый|ая|ое|ые))$/, (g) => `smażon${end(g)}`],
+  [/^(запеч[её]нн?(ый|ая|ое|ые))$/, (g) => `pieczon${end(g)}`],
   [/^(красн(ый|ая|ое|ые))$/, (g) => `czerwon${end(g)}`],
   [/^(ч[её]рн(ый|ая|ое|ые))$/, (g) => `czarn${end(g)}`],
   [/^(потрошен(ый|ая|ое|ые)|потрош[её]нн?(ый|ая|ое|ые))$/, (g) => `patroszon${end(g)}`],
@@ -170,7 +173,9 @@ function createTranslator({ url = process.env.TRANSLATE_URL || 'https://api.myme
     const key = text;
     if (cache.has(key)) return cache.get(key);
     try {
-      const res = await fetch(`${url}?langpair=ru|pl&q=${encodeURIComponent(text)}`, {
+      // TRANSLATE_EMAIL — e-mail магазина для MyMemory: дневной лимит 50 000 символов вместо 5 000
+      const de = process.env.TRANSLATE_EMAIL ? `&de=${encodeURIComponent(process.env.TRANSLATE_EMAIL)}` : '';
+      const res = await fetch(`${url}?langpair=ru|pl${de}&q=${encodeURIComponent(text)}`, {
         headers: { 'User-Agent': 'SHUL.FISH shop (shulfish.pl)' }, signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) return null;
