@@ -198,3 +198,28 @@ test('старая база без роли «курьер» обновляет�
   assert.match(sql, /'courier'/);
   assert.ok(db.prepare("SELECT COUNT(*) c FROM users WHERE role IN ('admin','manager')").get().c >= 2);
 });
+
+test('пробные заказы: только администратор, склад и отчёты не трогают, удаляются', async () => {
+  const admin = client();
+  const manager = client();
+  await admin('POST', '/api/auth/login', { email: 'admin@shul.fish', password: 'admin-test-pass' });
+  await manager('POST', '/api/auth/login', { email: 'manager@shul.fish', password: 'manager-test-pass' });
+  assert.equal((await manager('POST', '/api/test-orders', {})).status, 403);
+  const stock = () => db.prepare('SELECT SUM(stock) s FROM products').get().s;
+  const before = stock();
+  const repBefore = (await admin('GET', '/api/reports/percent')).data.totals.orders;
+  const r = (await admin('POST', '/api/test-orders', {})).data;
+  assert.equal(r.created, 6);
+  assert.equal(stock(), before);
+  assert.equal((await admin('GET', '/api/reports/percent')).data.totals.orders, repBefore);
+  // курьер видит 5 из 6 (кроме «Нового»)
+  const route = (await admin('GET', '/api/courier/route')).data;
+  const seen = [...route.stops, ...route.unlocated].filter((s) => r.ids.includes(s.id));
+  assert.equal(seen.length, 5);
+  // отмена пробного заказа не возвращает товар на склад
+  await admin('PUT', `/api/orders/${r.ids[0]}/status`, { status: 'cancelled' });
+  assert.equal(stock(), before);
+  assert.equal((await manager('DELETE', '/api/test-orders', {})).status, 403);
+  assert.equal((await admin('DELETE', '/api/test-orders', {})).data.deleted, 6);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM orders WHERE is_test = 1').get().c, 0);
+});

@@ -968,10 +968,24 @@ async function adminMovements(main) {
 async function adminOrders(main) {
   main.innerHTML = `<div class="toolbar"><h2 style="margin:0">Заказы</h2>
     <div class="chips" id="ostat"><button class="chip active" data-s="">Все</button>${Object.entries(state.meta.order_statuses).map(([k, v]) => `<button class="chip" data-s="${k}">${v}</button>`).join('')}</div>
-    <button class="btn cart" id="routeBtn" type="button">🗺 Маршрут развоза</button></div>
+    <button class="btn cart" id="routeBtn" type="button">🗺 Маршрут развоза</button>
+    <a class="btn" href="/courier">🚚 Экран курьера</a></div>
+    ${state.me.role === 'admin' ? `<div class="panel test-orders"><b>Пробные заказы</b> <span class="muted">— 6 адресов в зоне доставки, чтобы посмотреть заказы, маршрут и экран курьера. Склад не списывается, в отчёты и Google Таблицу не попадают.</span>
+      <div class="route-links" style="margin-top:10px"><button class="btn sm primary" id="testMake" type="button">+ Создать пробные заказы</button><button class="btn sm danger" id="testDel" type="button">Удалить пробные заказы</button></div></div>` : ''}
     <div id="route"></div>
     <div id="olist"></div>`;
   $('#routeBtn').addEventListener('click', () => showRoute($('#route')));
+  $('#testMake')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Создаём… (адреса ищутся на карте)';
+    try { const r = await api('POST', '/api/test-orders', {}); toast(`Создано пробных заказов: ${r.created}`); $('#route').innerHTML = ''; load(); }
+    catch (err) { toast(err.message, true); }
+    e.target.disabled = false; e.target.textContent = '+ Создать пробные заказы';
+  });
+  $('#testDel')?.addEventListener('click', async () => {
+    if (!confirm('Удалить все пробные заказы?')) return;
+    try { const r = await api('DELETE', '/api/test-orders', {}); toast(`Удалено пробных заказов: ${r.deleted}`); $('#route').innerHTML = ''; load(); }
+    catch (err) { toast(err.message, true); }
+  });
   let current = '';
   const load = async () => {
     const { orders } = await api('GET', '/api/orders' + (current ? `?status=${current}` : ''));

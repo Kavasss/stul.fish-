@@ -289,7 +289,8 @@ addColumn('orders', 'paid_method', 'TEXT'); // оплата курьеру: cash
 addColumn('orders', 'paid_at', 'TEXT');
 addColumn('orders', 'paid_by', "TEXT NOT NULL DEFAULT ''");
 addColumn('orders', 'paid_by_id', 'INTEGER');
-addColumn('orders', 'lat', 'REAL'); // координаты адреса доставки — для маршрута развоза
+addColumn('orders', 'lat', 'REAL');
+addColumn('orders', 'is_test', 'INTEGER NOT NULL DEFAULT 0'); // пробный заказ: без склада, отчётов и Google Таблицы // координаты адреса доставки — для маршрута развоза
 addColumn('orders', 'lon', 'REAL'); // стоимость доставки (грош); NULL — не рассчитана, уточнит менеджер
 addColumn('order_items', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 // Поштучная продажа по цене за кг: piece_weight — примерный вес 1 шт., кг. NULL — обычный товар (цена за единицу).
@@ -1369,6 +1370,58 @@ async function buildRoute(statuses) {
     total_km: Math.round(total * 10) / 10, total_min: road ? Math.round(totalMin) : null,
     unlocated: unlocated.map((x) => stop(x, null, null, null)), links: mapsLinks(DELIVERY_CENTER, stops) };
 }
+/*
+ * Пробные заказы (только администратор): несколько адресов в зоне доставки, чтобы посмотреть
+ * заказы, маршрут и экран курьера. Склад не списывается, в отчёты и Google Таблицу не попадают.
+ */
+const TEST_ORDERS = [
+  { name: 'ТЕСТ Анна', area: 'warszawa', address: 'Kondratowicza 20 m. 4', comment: 'Пробный заказ · позвонить за 10 минут', status: 'confirmed' },
+  { name: 'ТЕСТ Олег', area: 'warszawa', address: 'Radzymińska 100', comment: 'Пробный заказ', status: 'confirmed' },
+  { name: 'ТЕСТ Марта', area: 'warszawa', address: 'Głębocka 15', comment: 'Пробный заказ · домофон 12', status: 'assembling' },
+  { name: 'ТЕСТ Павел', area: 'warszawa', address: 'Codzienna 7', comment: 'Пробный заказ', status: 'assembling' },
+  { name: 'ТЕСТ Ирина', area: 'zabki', address: 'Piłsudskiego 10', comment: 'Пробный заказ · оставить у двери', status: 'delivering' },
+  { name: 'ТЕСТ Ян', area: 'warszawa', address: 'Łodygowa 21', comment: 'Пробный заказ — «Новый», курьер его ещё не видит', status: 'new' },
+];
+route('POST', '/api/test-orders', async ({ user }) => {
+  needAdmin(user);
+  if (db.prepare('SELECT COUNT(*) c FROM orders WHERE is_test = 1').get().c >= 30) throw new HttpError(409, 'Пробных заказов уже много — сначала удалите старые');
+  const prods = db.prepare('SELECT * FROM products WHERE active = 1 ORDER BY id LIMIT 6').all();
+  if (!prods.length) throw new HttpError(409, 'Нет товаров в каталоге — добавьте хотя бы один товар');
+  const ids = [];
+  for (const [k, t] of TEST_ORDERS.entries()) {
+    let q = { address: `${DELIVERY_AREAS[t.area]}, ${t.address}`, distance: null, fee: null, point: null };
+    try { q = await courierQuote({ area: t.area, address: t.address }); } catch { /* вне радиуса — оставляем без расстояния */ }
+    const picked = [prods[k % prods.length], prods[(k + 2) % prods.length]].filter((p, i, a) => a.indexOf(p) === i);
+    const id = tx(() => {
+      const r = db.prepare("INSERT INTO orders (customer_name,phone,email,address,delivery,comment,lang,consent_at,distance_km,delivery_fee,lat,lon,status,manager_name,is_test) VALUES (?,?,'',?,'courier',?,'ru',datetime('now'),?,?,?,?,?,?,1)")
+        .run(t.name, '+48 600 000 00' + k, q.address, t.comment, q.distance, q.fee, q.point ? q.point[0] : null, q.point ? q.point[1] : null, t.status, user.name);
+      const oid = Number(r.lastInsertRowid);
+      let total = 0;
+      for (const [i, p] of picked.entries()) {
+        const qty = i === 0 ? 2 : 1;
+        db.prepare('INSERT INTO order_items (order_id,product_id,name,name_pl,unit,price,qty,piece_weight) VALUES (?,?,?,?,?,?,?,?)').run(oid, p.id, p.name, p.name_pl || '', p.unit, p.price, qty, p.piece_weight ?? null);
+        total += Math.round(p.price * qty * (p.piece_weight || 1));
+      }
+      db.prepare('UPDATE orders SET total = ? WHERE id = ?').run(total, oid);
+      return oid;
+    });
+    ids.push(id);
+  }
+  audit(user, 'Пробные заказы созданы', ids.map((i) => `№${i}`).join(', '));
+  return { created: ids.length, ids };
+});
+route('DELETE', '/api/test-orders', ({ user }) => {
+  needAdmin(user);
+  const ids = db.prepare('SELECT id FROM orders WHERE is_test = 1').all().map((r) => r.id);
+  tx(() => {
+    for (const id of ids) {
+      db.prepare('DELETE FROM order_items WHERE order_id = ?').run(id);
+      db.prepare('DELETE FROM orders WHERE id = ?').run(id);
+    }
+  });
+  if (ids.length) audit(user, 'Пробные заказы удалены', ids.map((i) => `№${i}`).join(', '));
+  return { deleted: ids.length };
+});
 function getOrder(id) {
   const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(id));
   if (!o) throw new HttpError(404, 'Заказ не найден');
@@ -1399,7 +1452,7 @@ route('PUT', '/api/orders/:id/status', ({ user, params, body }) => {
     if (!o) throw new HttpError(404, 'Заказ не найден');
     if (o.status === status) return;
     if (o.status === 'cancelled') throw new HttpError(409, 'Отменённый заказ нельзя вернуть в работу — оформите новый');
-    if (status === 'cancelled') {
+    if (status === 'cancelled' && !o.is_test) {
       // Возвращаем товар на склад
       for (const it of db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(o.id)) {
         const p = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
@@ -1440,7 +1493,7 @@ route('PUT', '/api/orders/:id/total', ({ user, params, body }) => {
 // --- 10% от суммы чека (только администратор) ---
 // Сумма чека = товары (по факт. весу, если задано) + доставка. Отменённые заказы не учитываются.
 function percentReport(from, to) {
-  const rows = db.prepare(`SELECT * FROM orders WHERE status != 'cancelled'
+  const rows = db.prepare(`SELECT * FROM orders WHERE status != 'cancelled' AND is_test = 0
     AND date(created_at) >= date(?) AND date(created_at) <= date(?) ORDER BY id DESC`).all(from, to).map((o) => {
     const check = (o.total_final ?? o.total) + (o.delivery === 'pickup' ? 0 : o.delivery_fee || 0);
     return { id: o.id, date: o.created_at, status: ORDER_STATUSES[o.status] || o.status, check: check / 100, percent: Math.round(check * 0.1) / 100 };
@@ -1569,11 +1622,11 @@ route('GET', '/api/stats', ({ user }) => {
   if (user.role === 'customer') throw new HttpError(403, 'Недостаточно прав');
   const out = {};
   if (can(user, 'orders.manage') || can(user, 'inventory.view')) {
-    out.orders_new = db.prepare("SELECT COUNT(*) c FROM orders WHERE status = 'new'").get().c;
-    out.orders_active = db.prepare("SELECT COUNT(*) c FROM orders WHERE status IN ('new','confirmed','assembling','delivering')").get().c;
+    out.orders_new = db.prepare("SELECT COUNT(*) c FROM orders WHERE status = 'new' AND is_test = 0").get().c;
+    out.orders_active = db.prepare("SELECT COUNT(*) c FROM orders WHERE status IN ('new','confirmed','assembling','delivering') AND is_test = 0").get().c;
   }
   if (can(user, 'inventory.view')) {
-    out.revenue_30d = (db.prepare("SELECT COALESCE(SUM(total),0) s FROM orders WHERE status != 'cancelled' AND created_at >= datetime('now','-30 days')").get().s) / 100;
+    out.revenue_30d = (db.prepare("SELECT COALESCE(SUM(total),0) s FROM orders WHERE status != 'cancelled' AND is_test = 0 AND created_at >= datetime('now','-30 days')").get().s) / 100;
     out.low_stock = db.prepare('SELECT id, name, stock, min_stock, unit FROM products WHERE stock <= min_stock ORDER BY stock').all();
     out.products = db.prepare('SELECT COUNT(*) c FROM products').get().c;
   }

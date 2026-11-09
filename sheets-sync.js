@@ -147,7 +147,7 @@ function createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement
       const deleted = db.prepare('SELECT sku FROM deleted_skus WHERE pushed = 0').all().map((r) => r.sku);
       const moves = db.prepare(`SELECT m.*, u.name AS user_name FROM stock_movements m LEFT JOIN users u ON u.id = m.user_id
         WHERE m.sheet_synced = 0 ORDER BY m.id LIMIT ${CHUNK.movements}`).all();
-      const orders = db.prepare(`SELECT * FROM orders WHERE sheet_ver > sheet_pushed_ver ORDER BY id LIMIT ${CHUNK.orders}`).all();
+      const orders = db.prepare(`SELECT * FROM orders WHERE sheet_ver > sheet_pushed_ver AND is_test = 0 ORDER BY id LIMIT ${CHUNK.orders}`).all();
       const ackPart = first ? acks : [];
       if (!products.length && !deleted.length && !moves.length && !orders.length && !ackPart.length) break;
       await call('push', {
@@ -247,7 +247,7 @@ function createSheetsSync({ db, CATEGORIES, UNITS, ORDER_STATUSES, applyMovement
       pending: {
         products: pendingProducts,
         movements: db.prepare('SELECT COUNT(*) c FROM stock_movements WHERE sheet_synced = 0').get().c,
-        orders: db.prepare('SELECT COUNT(*) c FROM orders WHERE sheet_ver > sheet_pushed_ver').get().c,
+        orders: db.prepare('SELECT COUNT(*) c FROM orders WHERE sheet_ver > sheet_pushed_ver AND is_test = 0').get().c,
       },
     };
   }
