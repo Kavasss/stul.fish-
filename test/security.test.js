@@ -19,6 +19,7 @@ const geo = http.createServer((req, res) => {
 }).listen(0);
 process.env.TRANSLATE_URL = 'off';
 process.env.GEOCODER_URL = `http://127.0.0.1:${geo.address().port}/search`;
+process.env.ORDER_HOURS = 'off';
 const { server } = require('../server.js');
 let base;
 before(() => new Promise((r) => server.listen(0, () => { base = `http://127.0.0.1:${server.address().port}`; r(); })));

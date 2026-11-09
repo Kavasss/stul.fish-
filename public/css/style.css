@@ -516,6 +516,28 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
   .nav-top { display: none; }
 }
 
+/* Время приёма заказов — полоска над шапкой */
+.hours-bar {
+  display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 16px; font: 500 13px var(--head); letter-spacing: .08em; text-align: center;
+  color: #f6e7cf; background: linear-gradient(90deg, #3a2414, #5a361e 50%, #3a2414); border-bottom: 1px solid #a8784c;
+}
+.hours-bar .hours-st { color: #e8a48a; }
+.hours-bar.open .hours-st { color: #9be3a6; }
+.hours-bar.hidden { display: none; }
+/* Маршрут развоза */
+.route { margin-bottom: 20px; }
+.route-list { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 8px; }
+.route-stop { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.02); }
+.route-n { flex: 0 0 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font: 700 15px var(--head);
+  background: linear-gradient(180deg, #8a5a36, #4f2f1a); color: #f6e7cf; border: 1px solid #a8784c; }
+.route-main { flex: 1; min-width: 0; }
+.route-main b { display: block; overflow-wrap: anywhere; }
+.route-main .muted { font-size: 13px; overflow-wrap: anywhere; }
+.route-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 13px; white-space: nowrap; }
+.route-links { display: flex; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 560px) { .route-stop { flex-wrap: wrap; } .route-side { flex-direction: row; gap: 10px; width: 100%; justify-content: flex-end; } }
+
 /* ====== ДЕМО: океан с рыбками на фоне ====== */
 .bg-grid {
   background:

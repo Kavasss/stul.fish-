@@ -18,6 +18,7 @@ before(() => {
   process.env.SEED_DEMO = '1';
   process.env.TRANSLATE_URL = 'off';
 process.env.GEOCODER_URL = 'off';
+process.env.ORDER_HOURS = 'off'; // заказы круглосуточно (время приёма проверяется в hours.test.js)
   process.env.ADMIN_PASSWORD = 'admin-test-pass';
   process.env.MANAGER_PASSWORD = 'manager-test-pass';
   process.env.STOCK_PHOTOS_DIR = photos;

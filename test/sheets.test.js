@@ -82,6 +82,7 @@ before(async () => {
   process.env.SEED_DEMO = '1';
   process.env.TRANSLATE_URL = 'off';
 process.env.GEOCODER_URL = 'off';
+process.env.ORDER_HOURS = 'off'; // заказы круглосуточно (время приёма проверяется в hours.test.js)
   process.env.ADMIN_PASSWORD = 'admin-test-pass';
   process.env.MANAGER_PASSWORD = 'manager-test-pass';
   process.env.SHEETS_WEBAPP_URL = `http://127.0.0.1:${gas.address().port}/exec`;

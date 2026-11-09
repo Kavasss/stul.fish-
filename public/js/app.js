@@ -35,6 +35,36 @@ function toast(msg, isErr = false) {
   setTimeout(() => el.remove(), 3800);
 }
 const can = (p) => !!state.me && state.me.permissions.includes(p);
+/* ---------- Время приёма заказов (по Варшаве) ---------- */
+const DAY_NAMES = { ru: ['', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'], pl: ['', 'pon.', 'wt.', 'śr.', 'czw.', 'pt.', 'sob.', 'niedz.'] };
+function hoursDays(days) {
+  const n = DAY_NAMES[LANG] || DAY_NAMES.ru;
+  if (days.length === 7) return t('hours.daily');
+  const run = days.every((x, i) => i === 0 || x === days[i - 1] + 1);
+  return run && days.length > 2 ? `${n[days[0]]}–${n[days[days.length - 1]]}` : days.map((x) => n[x]).join(', ');
+}
+function ordersOpenNow() {
+  const h = state.meta?.order_hours;
+  if (!h) return true;
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(new Date()).map((x) => [x.type, x.value]));
+  const day = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[p.weekday];
+  const min = Number(p.hour) * 60 + Number(p.minute);
+  const m = (s) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3));
+  return h.days.includes(day) && min >= m(h.from) && min < m(h.to);
+}
+const cartClosed = () => !isStaff() && !ordersOpenNow();
+const hoursParams = () => ({ days: hoursDays(state.meta.order_hours.days), from: state.meta.order_hours.from, to: state.meta.order_hours.to });
+function renderHoursBar() {
+  const bar = $('#hoursBar');
+  if (!bar) return;
+  const h = state.meta?.order_hours;
+  bar.classList.toggle('hidden', !h);
+  if (!h) return;
+  const open = ordersOpenNow() && !state.meta.orders_paused;
+  bar.classList.toggle('open', open);
+  bar.innerHTML = `<span class="hours-ico" aria-hidden="true">🕒</span> ${esc(t('hours.bar', hoursParams()))} <span class="hours-st">· ${t(open ? 'hours.open' : 'hours.closed')}</span>`;
+}
 const isStaff = () => !!state.me && (state.me.role === 'admin' || state.me.role === 'manager');
 
 /* ---------------- Корзина ---------------- */
@@ -176,6 +206,7 @@ $('#burger').addEventListener('click', () => $('#nav').classList.toggle('open'))
 $('#langBtn').addEventListener('click', () => {
   setLang(LANG === 'pl' ? 'ru' : 'pl');
   updateHeader();
+  renderHoursBar();
   const bar = $('.cookie-bar');
   if (bar) { bar.remove(); cookieNotice(); }
   // Убираем ?lang=… из адреса, чтобы он не перебивал выбор при обновлении страницы
@@ -385,7 +416,8 @@ function viewCart() {
       <p class="muted" style="margin:-6px 0 0;font-size:13px">${t('cart.weightNote')}</p>
       ${consentBox()}
       ${state.meta?.orders_paused ? `<div class="panel" style="border-color:var(--warn)">${t('cart.paused')}</div>` : ''}
-      <button class="btn primary" type="submit" ${state.meta?.orders_paused ? 'disabled' : ''}>${t('cart.order')}</button>
+      ${!state.meta?.orders_paused && cartClosed() ? `<div class="panel" style="border-color:var(--warn)">${esc(t('cart.closed', hoursParams()))}</div>` : ''}
+      <button class="btn primary" type="submit" ${state.meta?.orders_paused || cartClosed() ? 'disabled' : ''}>${t('cart.order')}</button>
       ${state.me ? '' : `<p class="muted" style="margin:0;font-size:13px">${t('cart.loginHint')}</p>`}
     </form>
   </div>`;
@@ -925,8 +957,11 @@ async function adminMovements(main) {
 /* ---------- Заказы ---------- */
 async function adminOrders(main) {
   main.innerHTML = `<div class="toolbar"><h2 style="margin:0">Заказы</h2>
-    <div class="chips" id="ostat"><button class="chip active" data-s="">Все</button>${Object.entries(state.meta.order_statuses).map(([k, v]) => `<button class="chip" data-s="${k}">${v}</button>`).join('')}</div></div>
+    <div class="chips" id="ostat"><button class="chip active" data-s="">Все</button>${Object.entries(state.meta.order_statuses).map(([k, v]) => `<button class="chip" data-s="${k}">${v}</button>`).join('')}</div>
+    <button class="btn cart" id="routeBtn" type="button">🗺 Маршрут развоза</button></div>
+    <div id="route"></div>
     <div id="olist"></div>`;
+  $('#routeBtn').addEventListener('click', () => showRoute($('#route')));
   let current = '';
   const load = async () => {
     const { orders } = await api('GET', '/api/orders' + (current ? `?status=${current}` : ''));
@@ -948,6 +983,32 @@ async function adminOrders(main) {
     current = c.dataset.s; $$('#ostat .chip').forEach((x) => x.classList.toggle('active', x === c)); load();
   }));
   await load();
+}
+
+async function showRoute(box) {
+  if (box.innerHTML) { box.innerHTML = ''; return; } // повторное нажатие — скрыть
+  box.innerHTML = '<div class="panel muted">Строим маршрут…</div>';
+  try {
+    const r = await api('GET', '/api/orders/route');
+    const row = (s) => `<li class="route-stop">
+        <span class="route-n">${s.n ?? '?'}</span>
+        <div class="route-main">
+          <b>${esc(s.maps)}</b>
+          <div class="muted">№${s.id} · ${esc(s.customer_name)} · <a href="tel:${esc(s.phone.replace(/[^+\d]/g, ''))}">${esc(s.phone)}</a> · ${esc(s.status_name)}${s.comment ? ` · «${esc(s.comment)}»` : ''}</div>
+        </div>
+        <div class="route-side">${s.leg_km != null ? `<span class="muted">+${String(s.leg_km).replace('.', ',')} км</span>` : ''}<b>${zl(s.grand_total)}</b>
+          <a class="muted" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.maps)}">на карте</a></div>
+      </li>`;
+    box.innerHTML = `<div class="panel route">
+      <h3 style="margin-top:0">🗺 Маршрут развоза <span class="muted" style="font-size:14px">· ${r.stops.length} адр. · ≈${String(r.total_km).replace('.', ',')} км по прямой</span></h3>
+      <p class="muted" style="margin-top:-6px">Все курьерские заказы «Новый», «Подтверждён», «Собирается». Старт — ${esc(r.start.name)}, дальше — ближайший следующий адрес.</p>
+      ${r.stops.length ? `<ol class="route-list">${r.stops.map(row).join('')}</ol>
+      <div class="route-links">${r.links.map((l) => `<a class="btn primary" target="_blank" rel="noopener" href="${esc(l.url)}">Открыть в Google Maps${r.links.length > 1 ? ` (точки ${l.from}–${l.to})` : ''}</a>`).join('')}</div>
+      ${r.links.length > 1 ? '<p class="muted" style="font-size:13px">Google Maps принимает до 10 точек в одной ссылке, поэтому маршрут разбит на части — откройте их по очереди.</p>' : ''}`
+      : '<p class="muted">Сейчас нет курьерских заказов для развоза.</p>'}
+      ${r.unlocated.length ? `<h4>Адрес не найден на карте — проверьте и добавьте в маршрут вручную</h4><ol class="route-list">${r.unlocated.map(row).join('')}</ol>` : ''}
+    </div>`;
+  } catch (e) { box.innerHTML = ''; toast(e.message, true); }
 }
 
 /* ---------- Сотрудники и права ---------- */
@@ -1116,6 +1177,10 @@ async function adminSheets(main) {
     return;
   }
   updateHeader();
+  renderHoursBar();
+  // Время идёт: раз в минуту обновляем полоску (и корзину, если приём только что открылся или закрылся)
+  let wasOpen = ordersOpenNow();
+  setInterval(() => { renderHoursBar(); const now = ordersOpenNow(); if (now !== wasOpen) { wasOpen = now; if (location.pathname === '/cart') router(); } }, 60e3);
   $('#accountLink').addEventListener('click', (e) => { if (!state.me) { e.preventDefault(); e.stopPropagation(); navigate('/login'); } });
   router();
   cookieNotice();

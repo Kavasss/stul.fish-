@@ -45,6 +45,7 @@ const LEGAL = {
       <p>Заказ можно оформить без регистрации или из личного кабинета. Чтобы оформить заказ, нужно указать имя, телефон и, для доставки,
       адрес в зоне доставки, а затем нажать кнопку «Заказать с обязательством оплаты». После оформления покупатель видит номер заказа,
       и менеджер связывается с ним для подтверждения. Договор купли-продажи заключается в момент подтверждения заказа менеджером.</p>
+      <p>Заказы через сайт принимаются с понедельника по субботу с 15:00 до 16:00 (по варшавскому времени). В другое время товары можно смотреть и класть в корзину, а оформить заказ — в часы приёма или по телефону.</p>
 
       <h3>4. Оплата</h3>
       <p>Способы оплаты: наличными или картой курьеру, BLIK, банковским переводом. Конкретный способ согласуется при подтверждении заказа.</p>
@@ -106,6 +107,7 @@ const LEGAL = {
       w przypadku dostawy — adres w strefie dostawy, a następnie kliknąć przycisk „Zamawiam z obowiązkiem zapłaty”.
       Po złożeniu zamówienia Klient otrzymuje jego numer, a konsultant kontaktuje się z nim w celu potwierdzenia.
       Umowa sprzedaży zostaje zawarta z chwilą potwierdzenia zamówienia przez konsultanta.</p>
+      <p>Zamówienia przez stronę przyjmowane są od poniedziałku do soboty w godz. 15:00–16:00 (czasu warszawskiego). W pozostałych godzinach można przeglądać produkty i dodawać je do koszyka, a zamówienie złożyć w godzinach przyjmowania lub telefonicznie.</p>
 
       <h3>§ 4. Płatności</h3>
       <p>Dostępne formy płatności: gotówką lub kartą u kuriera, BLIK, przelew bankowy. Forma płatności jest uzgadniana przy potwierdzeniu zamówienia.</p>

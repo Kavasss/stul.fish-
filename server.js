@@ -77,6 +77,38 @@ const DELIVERY_RADIUS_KM = Number(process.env.DELIVERY_RADIUS_KM) || 7;
 // Стоимость доставки: за каждый начатый километр по прямой от центра зоны (грош)
 const DELIVERY_PRICE_PER_KM = Math.round((Number(process.env.DELIVERY_PRICE_PER_KM) || 2) * 100);
 const DELIVERY_MIN_FEE = Math.round((Number(process.env.DELIVERY_MIN_FEE) || 10) * 100); // минимальная стоимость доставки
+// Время приёма заказов с сайта — по варшавскому времени. ORDER_HOURS=off — круглосуточно.
+// ORDER_DAYS — дни недели: 1 = понедельник … 7 = воскресенье, например «1-6» или «1,2,3,4,5».
+function parseOrderHours(v = process.env.ORDER_HOURS ?? '15:00-16:00', daysSpec = process.env.ORDER_DAYS ?? '1-6') {
+  if (v === 'off') return null;
+  const m = /^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/.exec(v);
+  if (!m) { console.warn(`ORDER_HOURS="${v}" не понят, заказы принимаются круглосуточно`); return null; }
+  const days = new Set();
+  for (const part of String(daysSpec).split(',')) {
+    const r = /^\s*([1-7])\s*(?:-\s*([1-7]))?\s*$/.exec(part);
+    if (r) for (let d = Number(r[1]); d <= Number(r[2] || r[1]); d++) days.add(d);
+  }
+  return { from: Number(m[1]) * 60 + Number(m[2]), to: Number(m[3]) * 60 + Number(m[4]), days: [...days].sort() };
+}
+const ORDER_HOURS = parseOrderHours();
+const WARSAW_TIME = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const WEEKDAY = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+function warsawNow(date = new Date()) {
+  const p = Object.fromEntries(WARSAW_TIME.formatToParts(date).map((x) => [x.type, x.value]));
+  return { day: WEEKDAY[p.weekday], minutes: Number(p.hour) * 60 + Number(p.minute) };
+}
+function ordersOpenAt(date = new Date(), h = ORDER_HOURS) {
+  if (!h) return true;
+  const { day, minutes } = warsawNow(date);
+  return h.days.includes(day) && minutes >= h.from && minutes < h.to;
+}
+const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const DAY_SHORT = ['', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+function orderHoursText() {
+  const d = ORDER_HOURS.days;
+  const days = d.length === 7 ? 'ежедневно' : d.every((x, i) => i === 0 || x === d[i - 1] + 1) ? `${DAY_SHORT[d[0]]}–${DAY_SHORT[d[d.length - 1]]}` : d.map((x) => DAY_SHORT[x]).join(', ');
+  return `${days} с ${hhmm(ORDER_HOURS.from)} до ${hhmm(ORDER_HOURS.to)}`;
+}
 const deliveryFee = (km) => Math.max(DELIVERY_MIN_FEE, Math.max(1, Math.ceil(km)) * DELIVERY_PRICE_PER_KM);
 const DELIVERY_CENTER = (process.env.DELIVERY_CENTER || '52.2765,21.0560').split(',').map(Number); // Bazar Trocka
 // GEOCODER_URL=off — не проверять расстояние (тесты, нет интернета)
@@ -240,7 +272,9 @@ addColumn('products', 'description_pl', "TEXT NOT NULL DEFAULT ''");
 addColumn('orders', 'lang', "TEXT NOT NULL DEFAULT 'ru'");
 addColumn('orders', 'distance_km', 'REAL');
 addColumn('orders', 'total_final', 'INTEGER'); // сумма по фактическому весу (грош), задаёт менеджер
-addColumn('orders', 'delivery_fee', 'INTEGER'); // стоимость доставки (грош); NULL — не рассчитана, уточнит менеджер
+addColumn('orders', 'delivery_fee', 'INTEGER');
+addColumn('orders', 'lat', 'REAL'); // координаты адреса доставки — для маршрута развоза
+addColumn('orders', 'lon', 'REAL'); // стоимость доставки (грош); NULL — не рассчитана, уточнит менеджер
 addColumn('order_items', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 // Поштучная продажа по цене за кг: piece_weight — примерный вес 1 шт., кг. NULL — обычный товар (цена за единицу).
 addColumn('products', 'piece_weight', 'REAL');
@@ -793,7 +827,7 @@ function need(user, perm) {
   if (perm && !can(user, perm)) throw new HttpError(403, 'Недостаточно прав');
 }
 
-route('GET', '/api/meta', () => ({ orders_paused: ordersPaused(), categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, delivery_areas: DELIVERY_AREAS, delivery_radius_km: DELIVERY_RADIUS_KM, delivery_price_per_km: DELIVERY_PRICE_PER_KM / 100, default_manager_perms: DEFAULT_MANAGER_PERMS }));
+route('GET', '/api/meta', () => ({ orders_paused: ordersPaused(), order_hours: ORDER_HOURS && { from: hhmm(ORDER_HOURS.from), to: hhmm(ORDER_HOURS.to), days: ORDER_HOURS.days }, orders_open_now: ordersOpenAt(), categories: CATEGORIES, units: UNITS, permissions: PERMISSIONS, admin_only: ADMIN_ONLY, movement_types: MOVEMENT_TYPES, order_statuses: ORDER_STATUSES, delivery_areas: DELIVERY_AREAS, delivery_radius_km: DELIVERY_RADIUS_KM, delivery_price_per_km: DELIVERY_PRICE_PER_KM / 100, default_manager_perms: DEFAULT_MANAGER_PERMS }));
 route('GET', '/api/me', ({ user }) => ({ user: publicUser(user) }));
 
 route('POST', '/api/auth/register', ({ body, req, res }) => {
@@ -1120,13 +1154,14 @@ route('GET', '/api/inventory.csv', ({ user, query, res }) => {
 // --- Заказы ---
 // Проверка адреса курьерской доставки: город из списка, расстояние и стоимость.
 // Если адрес не нашёлся на карте — distance и fee = null (уточнит менеджер).
+// Улица и дом для поиска на карте: без «ul.» и номера квартиры
+const streetForSearch = (raw) => raw.replace(/^\s*(ul\.|ulica|al\.|aleja|os\.|pl\.)\s*/i, '').split(/\s+(?:m\.|lok\.|kv\.|кв\.)/i)[0].replace(/\s*\/\s*\d+\s*$/, '').trim();
 async function courierQuote(body) {
   const area = DELIVERY_AREAS[body.area || 'warszawa'];
   if (!area) throw new HttpError(400, 'Выберите район доставки из списка');
   const raw = str(body.address, 300);
   if (!raw) throw new HttpError(400, 'Укажите адрес доставки');
-  const street = raw.replace(/^\s*(ul\.|ulica|al\.|aleja|os\.|pl\.)\s*/i, '').split(/\s+(?:m\.|lok\.|kv\.|кв\.)/i)[0].replace(/\s*\/\s*\d+\s*$/, '').trim(); // номер квартиры для поиска не нужен
-  const point = await geocode(street, area);
+  const point = await geocode(streetForSearch(raw), area);
   let distance = null;
   if (point) {
     distance = Math.round(distanceKm(DELIVERY_CENTER, point) * 10) / 10;
@@ -1134,7 +1169,7 @@ async function courierQuote(body) {
       throw new HttpError(400, `Адрес примерно в ${distance} км от нас — курьер доставляет в радиусе ${DELIVERY_RADIUS_KM} км от Bazaru Trocka. Выберите самовывоз или позвоните нам.`);
     }
   }
-  return { address: `${area}, ${raw}`.slice(0, 340), distance, fee: distance == null ? null : deliveryFee(distance) };
+  return { address: `${area}, ${raw}`.slice(0, 340), distance, fee: distance == null ? null : deliveryFee(distance), point };
 }
 route('POST', '/api/delivery/quote', async ({ body, req }) => {
   rateLimit('quote', clientIp(req), 60, 3600e3, 'Слишком много запросов. Попробуйте позже.');
@@ -1145,6 +1180,8 @@ route('POST', '/api/orders', async ({ user, body, req }) => {
   // Не даём боту «выкупить» склад фейковыми заказами
   if (!seesStock(user)) rateLimit('order', clientIp(req), 10, 3600e3, 'Слишком много заказов подряд. Позвоните нам, и мы оформим заказ вручную.');
   if (ordersPaused()) throw new HttpError(503, 'Приём заказов временно приостановлен. Пожалуйста, загляните позже или позвоните нам.');
+  // Сотрудники могут оформить заказ за покупателя в любое время
+  if (!(user && (user.role === 'admin' || user.role === 'manager')) && !ordersOpenAt()) throw new HttpError(409, `Заказы на сайте принимаются ${orderHoursText()}. Пожалуйста, оформите заказ в это время.`);
   if (body.consent !== true) throw new HttpError(400, 'Нужно принять правила магазина и политику конфиденциальности');
   const items = Array.isArray(body.items) ? body.items.slice(0, 50) : [];
   if (!items.length) throw new HttpError(400, 'Корзина пуста');
@@ -1153,11 +1190,11 @@ route('POST', '/api/orders', async ({ user, body, req }) => {
   if (!name || !/^[+\d][\d\s()-]{6,}$/.test(phone)) throw new HttpError(400, 'Укажите имя и корректный телефон');
   const delivery = body.delivery === 'pickup' ? 'pickup' : 'courier';
   // Курьер: проверка радиуса и стоимость доставки. Адрес не нашёлся — заказ принимаем, менеджер уточнит.
-  let address = '', distance = null, fee = 0;
-  if (delivery === 'courier') ({ address, distance, fee } = await courierQuote(body));
+  let address = '', distance = null, fee = 0, point = null;
+  if (delivery === 'courier') ({ address, distance, fee, point } = await courierQuote(body));
   const orderId = tx(() => {
-    const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,lang,consent_at,distance_km,delivery_fee) VALUES (?,?,?,?,?,?,?,?,datetime('now'),?,?)")
-      .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000), body.lang === 'pl' ? 'pl' : 'ru', distance, fee);
+    const r = db.prepare("INSERT INTO orders (user_id,customer_name,phone,email,address,delivery,comment,lang,consent_at,distance_km,delivery_fee,lat,lon) VALUES (?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?)")
+      .run(user ? user.id : null, name, phone, str(body.email, 120), address, delivery, str(body.comment, 1000), body.lang === 'pl' ? 'pl' : 'ru', distance, fee, point ? point[0] : null, point ? point[1] : null);
     const oid = Number(r.lastInsertRowid);
     let total = 0;
     for (const it of items) {
@@ -1178,6 +1215,80 @@ route('POST', '/api/orders', async ({ user, body, req }) => {
   });
   sheets.schedule();
   return { order: getOrder(orderId) };
+});
+/*
+ * Маршрут развоза: все активные курьерские заказы по порядку от Bazaru Trocka.
+ * Порядок — «ближайший следующий», затем улучшение перестановками (2-opt), расстояния по прямой.
+ */
+const ROUTE_STATUSES = ['new', 'confirmed', 'assembling'];
+function planRoute(start, pts) {
+  const left = pts.slice(), path = [];
+  let cur = start;
+  while (left.length) {
+    let bi = 0;
+    for (let i = 1; i < left.length; i++) if (distanceKm(cur, left[i].pt) < distanceKm(cur, left[bi].pt)) bi = i;
+    cur = left[bi].pt;
+    path.push(left.splice(bi, 1)[0]);
+  }
+  // 2-opt для открытого маршрута (без возврата на базу)
+  const at = (i) => (i < 0 ? start : path[i].pt);
+  for (let improved = true, guard = 0; improved && guard < 50; guard++) {
+    improved = false;
+    for (let i = 0; i < path.length - 1; i++) {
+      for (let k = i + 1; k < path.length; k++) {
+        const before = distanceKm(at(i - 1), at(i)) + (k + 1 < path.length ? distanceKm(at(k), at(k + 1)) : 0);
+        const after = distanceKm(at(i - 1), at(k)) + (k + 1 < path.length ? distanceKm(at(i), at(k + 1)) : 0);
+        if (after < before - 1e-9) { path.splice(i, k - i + 1, ...path.slice(i, k + 1).reverse()); improved = true; }
+      }
+    }
+  }
+  return path;
+}
+// Ссылки Google Maps: не больше 9 промежуточных точек в одной ссылке — длинный маршрут делится на части
+function mapsLinks(start, stops) {
+  const links = [];
+  for (let i = 0; i < stops.length; i += 10) {
+    const part = stops.slice(i, i + 10);
+    const origin = i === 0 ? start.join(',') : stops[i - 1].maps;
+    const u = new URL('https://www.google.com/maps/dir/');
+    u.searchParams.set('api', '1');
+    u.searchParams.set('origin', origin);
+    u.searchParams.set('destination', part[part.length - 1].maps);
+    if (part.length > 1) u.searchParams.set('waypoints', part.slice(0, -1).map((s) => s.maps).join('|'));
+    u.searchParams.set('travelmode', 'driving');
+    links.push({ from: i + 1, to: i + part.length, url: u.toString() });
+  }
+  return links;
+}
+route('GET', '/api/orders/route', async ({ user }) => {
+  need(user, 'orders.manage');
+  const rows = db.prepare(`SELECT id FROM orders WHERE delivery = 'courier' AND status IN (${ROUTE_STATUSES.map(() => '?').join(',')}) ORDER BY id`).all(...ROUTE_STATUSES);
+  const located = [], unlocated = [];
+  for (const { id } of rows) {
+    let o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    // старые заказы без координат — ищем адрес на карте сейчас
+    if (o.lat == null && o.address) {
+      const [city, ...rest] = o.address.split(', ');
+      const pt = await geocode(streetForSearch(rest.join(', ')), city);
+      if (pt) { db.prepare('UPDATE orders SET lat = ?, lon = ? WHERE id = ?').run(pt[0], pt[1], id); o = { ...o, lat: pt[0], lon: pt[1] }; }
+    }
+    (o.lat == null ? unlocated : located).push({ o, pt: o.lat == null ? null : [o.lat, o.lon] });
+  }
+  const path = planRoute(DELIVERY_CENTER, located);
+  let prev = DELIVERY_CENTER, total = 0;
+  const stop = (x, n, leg) => {
+    const o = getOrder(x.o.id);
+    const [city, ...rest] = o.address.split(', ');
+    return { n, leg_km: leg, id: o.id, status: o.status, status_name: o.status_name, customer_name: o.customer_name, phone: o.phone, address: o.address, comment: o.comment,
+      grand_total: o.grand_total, lat: x.o.lat, lon: x.o.lon, maps: `${rest.join(', ')}, ${city}` };
+  };
+  const stops = path.map((x, i) => {
+    const leg = Math.round(distanceKm(prev, x.pt) * 10) / 10;
+    prev = x.pt; total += leg;
+    return stop(x, i + 1, leg);
+  });
+  return { start: { name: 'Bazar Trocka', lat: DELIVERY_CENTER[0], lon: DELIVERY_CENTER[1] }, stops, total_km: Math.round(total * 10) / 10,
+    unlocated: unlocated.map((x) => stop(x, null, null)), links: mapsLinks(DELIVERY_CENTER, stops) };
 });
 function getOrder(id) {
   const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(id));
@@ -1511,4 +1622,4 @@ if (require.main === module) {
     if (sheets.configured) { sheets.start(); console.log('Связь с Google Таблицей включена'); }
   });
 }
-module.exports = { server, db, sheets };
+module.exports = { server, db, sheets, ordersOpenAt, parseOrderHours, planRoute, mapsLinks };
