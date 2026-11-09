@@ -529,6 +529,12 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
   animation: rays 9s ease-in-out infinite alternate;
 }
 @keyframes rays { from { opacity: .6; } to { opacity: 1; } }
+/* ПК: фон океана размыт — картинка не «пикселит» на большом экране, а товары читаются чётче.
+   Слой чуть шире экрана, чтобы размытые края не просвечивали. */
+@media (min-width: 900px) {
+  .bg-grid { inset: -48px; filter: blur(14px) saturate(1.1); }
+  .fish { filter: blur(1.5px) drop-shadow(0 6px 10px rgba(0,0,0,.35)); }
+}
 .ocean { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 .fish { position: absolute; left: -160px; opacity: .55; filter: drop-shadow(0 6px 10px rgba(0,0,0,.35)); will-change: transform; }
 .fish svg { width: 100%; height: auto; display: block; animation: wiggle 1.2s ease-in-out infinite alternate; transform-origin: 70% 50%; }
