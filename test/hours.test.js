@@ -133,6 +133,13 @@ test('маршрут: перестановки сокращают путь, дл
   assert.equal(second.get('origin'), 'Ulica 10, Warszawa');
   assert.equal(second.get('destination'), 'Ulica 20, Warszawa');
   assert.equal(second.get('waypoints').split('|').length, 9);
+  // для телефона: по 4 адреса (3 промежуточных), старт — текущее место курьера
+  const mob = mapsLinks([52.2765, 21.056], stops, { size: 4, fromHere: true });
+  assert.deepEqual(mob.map((l) => [l.from, l.to]), [[1, 4], [5, 8], [9, 12], [13, 16], [17, 20], [21, 23]]);
+  const m2 = new URL(mob[1].url).searchParams;
+  assert.equal(m2.get('origin'), null);
+  assert.equal(m2.get('waypoints').split('|').length, 3);
+  assert.equal(m2.get('destination'), 'Ulica 8, Warszawa');
 });
 
 test('курьер: видит заказы к доставке с суммой и составом, отмечает оплату, больше ничего не может', async () => {
@@ -210,6 +217,10 @@ test('пробные заказы: только администратор, ск
   const repBefore = (await admin('GET', '/api/reports/percent')).data.totals.orders;
   const r = (await admin('POST', '/api/test-orders', {})).data;
   assert.equal(r.created, 6);
+  // повторное нажатие не удваивает пробные заказы
+  const again = (await admin('POST', '/api/test-orders', {})).data;
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM orders WHERE is_test = 1').get().c, 6);
+  r.ids = again.ids;
   assert.equal(stock(), before);
   assert.equal((await admin('GET', '/api/reports/percent')).data.totals.orders, repBefore);
   // курьер видит 5 из 6 (кроме «Нового»)

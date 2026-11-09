@@ -1283,14 +1283,15 @@ function planRoute(start, pts) {
   return path;
 }
 // Ссылки Google Maps: не больше 9 промежуточных точек в одной ссылке — длинный маршрут делится на части
-function mapsLinks(start, stops) {
+// Приложение Google Maps на телефоне принимает не больше 3 промежуточных точек — для телефона части по 4 адреса
+// и без точки старта: навигация начинается с того места, где курьер сейчас.
+function mapsLinks(start, stops, { size = 10, fromHere = false } = {}) {
   const links = [];
-  for (let i = 0; i < stops.length; i += 10) {
-    const part = stops.slice(i, i + 10);
-    const origin = i === 0 ? start.join(',') : stops[i - 1].maps;
+  for (let i = 0; i < stops.length; i += size) {
+    const part = stops.slice(i, i + size);
     const u = new URL('https://www.google.com/maps/dir/');
     u.searchParams.set('api', '1');
-    u.searchParams.set('origin', origin);
+    if (!fromHere) u.searchParams.set('origin', i === 0 ? start.join(',') : stops[i - 1].maps);
     u.searchParams.set('destination', part[part.length - 1].maps);
     if (part.length > 1) u.searchParams.set('waypoints', part.slice(0, -1).map((s) => s.maps).join('|'));
     u.searchParams.set('travelmode', 'driving');
@@ -1368,7 +1369,8 @@ async function buildRoute(statuses) {
   });
   return { start: { name: 'Bazar Trocka', lat: DELIVERY_CENTER[0], lon: DELIVERY_CENTER[1] }, mode: road ? 'road' : 'straight', stops,
     total_km: Math.round(total * 10) / 10, total_min: road ? Math.round(totalMin) : null,
-    unlocated: unlocated.map((x) => stop(x, null, null, null)), links: mapsLinks(DELIVERY_CENTER, stops) };
+    unlocated: unlocated.map((x) => stop(x, null, null, null)), links: mapsLinks(DELIVERY_CENTER, stops),
+    links_mobile: mapsLinks(DELIVERY_CENTER, stops, { size: 4, fromHere: true }) };
 }
 /*
  * Пробные заказы (только администратор): несколько адресов в зоне доставки, чтобы посмотреть
@@ -1384,7 +1386,13 @@ const TEST_ORDERS = [
 ];
 route('POST', '/api/test-orders', async ({ user }) => {
   needAdmin(user);
-  if (db.prepare('SELECT COUNT(*) c FROM orders WHERE is_test = 1').get().c >= 30) throw new HttpError(409, 'Пробных заказов уже много — сначала удалите старые');
+  // повторное нажатие заменяет прежние пробные заказы, а не добавляет ещё
+  tx(() => {
+    for (const { id } of db.prepare('SELECT id FROM orders WHERE is_test = 1').all()) {
+      db.prepare('DELETE FROM order_items WHERE order_id = ?').run(id);
+      db.prepare('DELETE FROM orders WHERE id = ?').run(id);
+    }
+  });
   const prods = db.prepare('SELECT * FROM products WHERE active = 1 ORDER BY id LIMIT 6').all();
   if (!prods.length) throw new HttpError(409, 'Нет товаров в каталоге — добавьте хотя бы один товар');
   const ids = [];

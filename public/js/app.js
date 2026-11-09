@@ -65,6 +65,9 @@ function renderHoursBar() {
   bar.classList.toggle('open', open);
   bar.innerHTML = `<span class="hours-ico" aria-hidden="true">🕒</span> ${esc(t('hours.bar', hoursParams()))} <span class="hours-st">· ${t(open ? 'hours.open' : 'hours.closed')}</span>`;
 }
+// Телефон/планшет: ссылки маршрута для приложения Google Maps (до 4 адресов в ссылке)
+const isPhone = () => window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 900;
+const routeLinks = (r) => (isPhone() && r.links_mobile ? r.links_mobile : r.links);
 const isCourier = () => state.me?.role === 'courier';
 const isStaff = () => !!state.me && (state.me.role === 'admin' || state.me.role === 'manager');
 
@@ -1027,8 +1030,8 @@ async function showRoute(box) {
       <h3 style="margin-top:0">🗺 Маршрут развоза <span class="muted" style="font-size:14px">· ${r.stops.length} адр. · ≈${String(r.total_km).replace('.', ',')} км ${r.mode === 'road' ? `по дорогам · ≈${r.total_min} мин в пути` : 'по прямой'}</span></h3>
       <p class="muted" style="margin-top:-6px">Все курьерские заказы «Новый», «Подтверждён», «Собирается». Старт — ${esc(r.start.name)}. ${r.mode === 'road' ? 'Порядок подобран по дорогам — самый короткий объезд всех адресов (время — без учёта пробок).' : '⚠ Сервис маршрутов сейчас недоступен — порядок примерный, по прямой. Попробуйте открыть маршрут ещё раз позже.'}</p>
       ${r.stops.length ? `<ol class="route-list">${r.stops.map(row).join('')}</ol>
-      <div class="route-links">${r.links.map((l) => `<a class="btn primary" target="_blank" rel="noopener" href="${esc(l.url)}">Открыть в Google Maps${r.links.length > 1 ? ` (точки ${l.from}–${l.to})` : ''}</a>`).join('')}</div>
-      ${r.links.length > 1 ? '<p class="muted" style="font-size:13px">Google Maps принимает до 10 точек в одной ссылке, поэтому маршрут разбит на части — откройте их по очереди.</p>' : ''}`
+      <div class="route-links">${routeLinks(r).map((l, _, a) => `<a class="btn primary" target="_blank" rel="noopener" href="${esc(l.url)}">Открыть в Google Maps${a.length > 1 ? ` (точки ${l.from}–${l.to})` : ''}</a>`).join('')}</div>
+      ${routeLinks(r).length > 1 ? `<p class="muted" style="font-size:13px">Google Maps принимает до ${isPhone() ? 4 : 10} адресов в одной ссылке, поэтому маршрут разбит на части — открывайте их по очереди.</p>` : ''}`
       : '<p class="muted">Сейчас нет курьерских заказов для развоза.</p>'}
       ${r.unlocated.length ? `<h4>Адрес не найден на карте — проверьте и добавьте в маршрут вручную</h4><ol class="route-list">${r.unlocated.map(row).join('')}</ol>` : ''}
     </div>`;
@@ -1072,7 +1075,8 @@ async function viewCourier() {
       <div class="stat"><div class="v">${zl(c.cash)}</div><div class="l">Наличными сегодня</div></div>
       <div class="stat"><div class="v">${zl(c.card)}</div><div class="l">Картой сегодня</div></div>
     </div>
-    ${r.stops.length ? `<div class="route-links" style="margin:16px 0">${r.links.map((l) => `<a class="btn primary" target="_blank" rel="noopener" href="${esc(l.url)}">🗺 Весь маршрут в Google Maps${r.links.length > 1 ? ` (${l.from}–${l.to})` : ''}</a>`).join('')}</div>
+    ${r.stops.length ? `<div class="route-links" style="margin:16px 0">${routeLinks(r).map((l, _, a) => `<a class="btn primary" target="_blank" rel="noopener" href="${esc(l.url)}">🗺 ${a.length > 1 ? `Маршрут: адреса ${l.from}–${l.to}` : 'Весь маршрут в Google Maps'}</a>`).join('')}</div>
+      ${routeLinks(r).length > 1 ? '<p class="muted" style="font-size:13px;margin-top:-6px">Приложение Google Maps на телефоне берёт до 4 адресов за раз: развезли первые — откройте следующую часть. Или нажимайте «Навигация» у каждого адреса.</p>' : ''}
       <ol class="route-list">${r.stops.map(card).join('')}</ol>` : '<div class="panel empty" style="margin-top:16px">Сейчас нет заказов для доставки</div>'}
     ${r.unlocated.length ? `<h3>Адрес не найден на карте — уточните у менеджера</h3><ol class="route-list">${r.unlocated.map(card).join('')}</ol>` : ''}
   </section>`;
