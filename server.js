@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   phone TEXT DEFAULT '',
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin','manager','customer')),
+  role TEXT NOT NULL CHECK (role IN ('admin','manager','courier','customer')),
   permissions TEXT NOT NULL DEFAULT '[]',
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -267,12 +267,28 @@ addColumn('orders', 'sheet_ver', 'INTEGER NOT NULL DEFAULT 1');
 addColumn('orders', 'sheet_pushed_ver', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('orders', 'consent_at', 'TEXT');
 addColumn('users', 'consent_at', 'TEXT');
+// Роль «курьер»: в старой базе ограничение роли без 'courier' — пересоздаём таблицу с теми же данными
+{
+  const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get().sql;
+  if (!sql.includes("'courier'")) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      db.exec('BEGIN');
+      db.exec(sql.replace(/CHECK \(role IN \([^)]*\)\)/, "CHECK (role IN ('admin','manager','courier','customer'))").replace(/^CREATE TABLE ("?)users\1/, 'CREATE TABLE users_new'));
+      db.exec('INSERT INTO users_new SELECT * FROM users; DROP TABLE users; ALTER TABLE users_new RENAME TO users; COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; } finally { db.exec('PRAGMA foreign_keys = ON'); }
+  }
+}
 addColumn('products', 'name_pl', "TEXT NOT NULL DEFAULT ''");
 addColumn('products', 'description_pl', "TEXT NOT NULL DEFAULT ''");
 addColumn('orders', 'lang', "TEXT NOT NULL DEFAULT 'ru'");
 addColumn('orders', 'distance_km', 'REAL');
 addColumn('orders', 'total_final', 'INTEGER'); // сумма по фактическому весу (грош), задаёт менеджер
 addColumn('orders', 'delivery_fee', 'INTEGER');
+addColumn('orders', 'paid_method', 'TEXT'); // оплата курьеру: cash / card; NULL — не оплачено
+addColumn('orders', 'paid_at', 'TEXT');
+addColumn('orders', 'paid_by', "TEXT NOT NULL DEFAULT ''");
+addColumn('orders', 'paid_by_id', 'INTEGER');
 addColumn('orders', 'lat', 'REAL'); // координаты адреса доставки — для маршрута развоза
 addColumn('orders', 'lon', 'REAL'); // стоимость доставки (грош); NULL — не рассчитана, уточнит менеджер
 addColumn('order_items', 'name_pl', "TEXT NOT NULL DEFAULT ''");
@@ -568,7 +584,7 @@ function importStockPhotos() {
 // Предупреждение, если в старой базе остались известные пароли из первой версии
 const KNOWN_WEAK = ['admin12345', 'manager12345'];
 function weakStaffAccounts() {
-  return db.prepare("SELECT * FROM users WHERE role IN ('admin','manager') AND active = 1").all()
+  return db.prepare("SELECT * FROM users WHERE role IN ('admin','manager','courier') AND active = 1").all()
     .filter((u) => KNOWN_WEAK.some((pw) => verifyPassword(pw, u.password_hash)))
     .map((u) => u.email);
 }
@@ -1283,7 +1299,44 @@ function mapsLinks(start, stops) {
 }
 route('GET', '/api/orders/route', async ({ user }) => {
   need(user, 'orders.manage');
-  const rows = db.prepare(`SELECT id FROM orders WHERE delivery = 'courier' AND status IN (${ROUTE_STATUSES.map(() => '?').join(',')}) ORDER BY id`).all(...ROUTE_STATUSES);
+  return buildRoute(ROUTE_STATUSES);
+});
+// Курьер: все курьерские заказы, готовые к доставке или в пути
+const COURIER_STATUSES = ['confirmed', 'assembling', 'delivering'];
+const PAY_METHODS = { cash: 'наличными', card: 'картой' };
+Object.setPrototypeOf(PAY_METHODS, null);
+const isCourier = (u) => !!u && u.role === 'courier';
+function needCourier(user) {
+  need(user);
+  if (!isCourier(user) && !can(user, 'orders.manage')) throw new HttpError(403, 'Недостаточно прав');
+}
+route('GET', '/api/courier/route', async ({ user }) => {
+  needCourier(user);
+  const r = await buildRoute(COURIER_STATUSES);
+  // собрано этим курьером за сегодня (по Варшаве)
+  const day = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw' }).format(d);
+  const today = day(new Date());
+  const rows = db.prepare("SELECT * FROM orders WHERE paid_by_id = ? AND paid_at >= datetime('now', '-2 days')").all(user.id)
+    .filter((o) => day(new Date(o.paid_at.replace(' ', 'T') + 'Z')) === today);
+  const sum = (m) => Math.round(rows.filter((o) => o.paid_method === m).reduce((s, o) => s + ((o.total_final ?? o.total) + (o.delivery_fee || 0)), 0)) / 100;
+  return { ...r, collected: { count: rows.length, cash: sum('cash'), card: sum('card') } };
+});
+route('PUT', '/api/orders/:id/payment', ({ user, params, body }) => {
+  needCourier(user);
+  const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(params.id));
+  if (!o) throw new HttpError(404, 'Заказ не найден');
+  // курьер отмечает только заказы из своего списка
+  if (!can(user, 'orders.manage') && (o.delivery !== 'courier' || !COURIER_STATUSES.includes(o.status))) throw new HttpError(403, 'Этот заказ не в списке доставки');
+  const method = body.method == null || body.method === '' ? null : body.method;
+  if (method !== null && !PAY_METHODS[method]) throw new HttpError(400, 'Способ оплаты: наличными или картой');
+  if (method) db.prepare("UPDATE orders SET paid_method = ?, paid_at = datetime('now'), paid_by = ?, paid_by_id = ?, sheet_ver = sheet_ver + 1, updated_at = datetime('now') WHERE id = ?").run(method, user.name, user.id, o.id);
+  else db.prepare("UPDATE orders SET paid_method = NULL, paid_at = NULL, paid_by = '', paid_by_id = NULL, sheet_ver = sheet_ver + 1, updated_at = datetime('now') WHERE id = ?").run(o.id);
+  sheets.schedule();
+  audit(user, 'Оплата заказа', `№${o.id}: ${method ? `оплачено ${PAY_METHODS[method]}` : 'отметка об оплате снята'}`);
+  return { order: getOrder(o.id) };
+});
+async function buildRoute(statuses) {
+  const rows = db.prepare(`SELECT id FROM orders WHERE delivery = 'courier' AND status IN (${statuses.map(() => '?').join(',')}) ORDER BY id`).all(...statuses);
   const located = [], unlocated = [];
   for (const { id } of rows) {
     let o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
@@ -1303,7 +1356,8 @@ route('GET', '/api/orders/route', async ({ user }) => {
     const o = getOrder(x.o.id);
     const [city, ...rest] = o.address.split(', ');
     return { n, leg_km: leg, leg_min: min, id: o.id, status: o.status, status_name: o.status_name, customer_name: o.customer_name, phone: o.phone, address: o.address, comment: o.comment,
-      grand_total: o.grand_total, lat: x.o.lat, lon: x.o.lon, maps: `${rest.join(', ')}, ${city}` };
+      grand_total: o.grand_total, total_final: o.total_final, paid_method: o.paid_method, paid_at: o.paid_at, paid_by: o.paid_by,
+      items: o.items.map((i) => ({ name: i.name, qty: i.qty, unit: i.unit, piece_weight: i.piece_weight })), lat: x.o.lat, lon: x.o.lon, maps: `${rest.join(', ')}, ${city}` };
   };
   const stops = path.map((x, i) => {
     const leg = road ? road.legs[i].km : Math.round(distanceKm(prev, x.pt) * 10) / 10;
@@ -1314,7 +1368,7 @@ route('GET', '/api/orders/route', async ({ user }) => {
   return { start: { name: 'Bazar Trocka', lat: DELIVERY_CENTER[0], lon: DELIVERY_CENTER[1] }, mode: road ? 'road' : 'straight', stops,
     total_km: Math.round(total * 10) / 10, total_min: road ? Math.round(totalMin) : null,
     unlocated: unlocated.map((x) => stop(x, null, null, null)), links: mapsLinks(DELIVERY_CENTER, stops) };
-});
+}
 function getOrder(id) {
   const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(id));
   if (!o) throw new HttpError(404, 'Заказ не найден');
@@ -1426,12 +1480,12 @@ route('GET', '/api/reports/percent.csv', ({ user, query, res }) => {
 // --- Пользователи ---
 route('GET', '/api/users', ({ user }) => {
   need(user, 'users.manage');
-  return { users: db.prepare('SELECT * FROM users ORDER BY CASE role WHEN \'admin\' THEN 0 WHEN \'manager\' THEN 1 ELSE 2 END, id').all().map(publicUser) };
+  return { users: db.prepare('SELECT * FROM users ORDER BY CASE role WHEN \'admin\' THEN 0 WHEN \'manager\' THEN 1 WHEN \'courier\' THEN 2 ELSE 3 END, id').all().map(publicUser) };
 });
 route('POST', '/api/users', ({ user, body }) => {
   need(user, 'users.manage');
   const email = str(body.email, 120).toLowerCase();
-  const role = ['admin', 'manager', 'customer'].includes(body.role) ? body.role : 'manager';
+  const role = ['admin', 'manager', 'courier', 'customer'].includes(body.role) ? body.role : 'manager';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Укажите корректный e-mail');
   if (String(body.password || '').length < 8) throw new HttpError(400, 'Пароль должен быть не короче 8 символов');
   if (String(body.password).length > MAX_PASSWORD) throw new HttpError(400, `Пароль должен быть не длиннее ${MAX_PASSWORD} символов`);
@@ -1450,7 +1504,7 @@ route('PUT', '/api/users/:id', ({ user, params, body }) => {
   if (target.id === user.id && ((body.role && body.role !== 'admin') || body.active === false)) {
     throw new HttpError(400, 'Нельзя понизить или заблокировать собственную учётную запись');
   }
-  if (body.role && ['admin', 'manager', 'customer'].includes(body.role) && body.role !== target.role) {
+  if (body.role && ['admin', 'manager', 'courier', 'customer'].includes(body.role) && body.role !== target.role) {
     db.prepare('UPDATE users SET role = ? WHERE id = ?').run(body.role, target.id); changes.push(`роль → ${body.role}`);
   }
   if (Array.isArray(body.permissions)) {
@@ -1603,7 +1657,7 @@ const ADSENSE_CLIENT = (() => {
   if (!/^ca-pub-\d{10,20}$/.test(v)) { console.warn(`ADSENSE_CLIENT="${v}" не похож на ca-pub-…, реклама выключена`); return null; }
   return v;
 })();
-const NO_ADS_PATHS = /^\/(admin|cart|account|login|register)(\/|$)/;
+const NO_ADS_PATHS = /^\/(admin|courier|cart|account|login|register)(\/|$)/;
 const cspWithAds = (nonce) => [
   "default-src 'self'",
   // 'strict-dynamic': доверяем скриптам с нашим nonce и тем, что они загрузили; https:/'unsafe-inline' — запасной вариант для старых браузеров

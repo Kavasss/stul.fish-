@@ -134,3 +134,67 @@ test('маршрут: перестановки сокращают путь, дл
   assert.equal(second.get('destination'), 'Ulica 20, Warszawa');
   assert.equal(second.get('waypoints').split('|').length, 9);
 });
+
+test('курьер: видит заказы к доставке с суммой и составом, отмечает оплату, больше ничего не может', async () => {
+  const admin = client();
+  await admin('POST', '/api/auth/login', { email: 'admin@shul.fish', password: 'admin-test-pass' });
+  const cu = (await admin('POST', '/api/users', { email: 'kurier@shul.fish', name: 'Курьер Петя', role: 'courier', password: 'courier-pass-1' })).data.user;
+  assert.equal(cu.role, 'courier');
+  assert.deepEqual(cu.permissions, []);
+  const make = async (address, status) => {
+    const res = await admin('POST', '/api/orders', { customer_name: 'K', phone: '+48600100200', delivery: 'courier', area: 'warszawa', address, consent: true, items: [{ product_id: 1, qty: 2 }] });
+    assert.equal(res.status, 200, JSON.stringify(res.data));
+    const o = res.data.order;
+    if (status) await admin('PUT', `/api/orders/${o.id}/status`, { status });
+    return o;
+  };
+  const ready = await make('Pierwsza 11', 'confirmed');
+  const onWay = await make('Druga 12', 'delivering');
+  const fresh = await make('Trzecia 13'); // «Новый» — курьер ещё не видит
+
+  const courier = client();
+  assert.equal((await courier('POST', '/api/auth/login', { email: 'kurier@shul.fish', password: 'courier-pass-1' })).status, 200);
+  const r = (await courier('GET', '/api/courier/route')).data;
+  const ids = r.stops.map((s) => s.id);
+  assert.ok(ids.includes(ready.id) && ids.includes(onWay.id) && !ids.includes(fresh.id));
+  const s = r.stops.find((x) => x.id === ready.id);
+  assert.equal(s.items[0].qty, 2);
+  assert.ok(s.grand_total > 0);
+  assert.equal(s.paid_method, null);
+  assert.deepEqual(r.collected, { count: 0, cash: 0, card: 0 });
+
+  // оплата
+  const paid = (await courier('PUT', `/api/orders/${ready.id}/payment`, { method: 'cash' })).data.order;
+  assert.equal(paid.paid_method, 'cash');
+  assert.equal(paid.paid_by, 'Курьер Петя');
+  await courier('PUT', `/api/orders/${onWay.id}/payment`, { method: 'card' });
+  const after = (await courier('GET', '/api/courier/route')).data.collected;
+  assert.equal(after.count, 2);
+  assert.equal(after.cash, s.grand_total);
+  assert.equal((await courier('PUT', `/api/orders/${onWay.id}/payment`, { method: 'bitcoin' })).status, 400);
+  assert.equal((await courier('PUT', `/api/orders/${onWay.id}/payment`, { method: null })).data.order.paid_method, null);
+  // заказ не из списка доставки — нельзя
+  assert.equal((await courier('PUT', `/api/orders/${fresh.id}/payment`, { method: 'cash' })).status, 403);
+  // менеджер видит отметку
+  const all = (await admin('GET', '/api/orders')).data.orders;
+  assert.equal(all.find((o) => o.id === ready.id).paid_method, 'cash');
+
+  // остальное курьеру закрыто
+  for (const [m, u, b] of [['GET', '/api/orders'], ['GET', '/api/orders/route'], ['PUT', `/api/orders/${ready.id}/status`, { status: 'done' }],
+    ['PUT', `/api/orders/${ready.id}/total`, { total: '1' }], ['GET', '/api/users'], ['GET', '/api/inventory'], ['POST', '/api/products', { name: 'X', category: 'smoked', price: 1 }],
+    ['GET', '/api/reports/percent'], ['GET', '/api/log']]) {
+    assert.equal((await courier(m, u, b)).status, 403, `${m} ${u}`);
+  }
+  // покупателю и гостю маршрут курьера закрыт
+  assert.equal((await client()('GET', '/api/courier/route')).status, 401);
+  const buyer = client();
+  await buyer('POST', '/api/auth/register', { email: 'buyer-c@example.com', name: 'B', password: '12345678', consent: true });
+  assert.equal((await buyer('GET', '/api/courier/route')).status, 403);
+  assert.equal((await buyer('PUT', `/api/orders/${ready.id}/payment`, { method: 'cash' })).status, 403);
+});
+
+test('старая база без роли «курьер» обновляется без потери пользователей', () => {
+  const sql = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'users'").get().sql;
+  assert.match(sql, /'courier'/);
+  assert.ok(db.prepare("SELECT COUNT(*) c FROM users WHERE role IN ('admin','manager')").get().c >= 2);
+});

@@ -65,6 +65,7 @@ function renderHoursBar() {
   bar.classList.toggle('open', open);
   bar.innerHTML = `<span class="hours-ico" aria-hidden="true">🕒</span> ${esc(t('hours.bar', hoursParams()))} <span class="hours-st">· ${t(open ? 'hours.open' : 'hours.closed')}</span>`;
 }
+const isCourier = () => state.me?.role === 'courier';
 const isStaff = () => !!state.me && (state.me.role === 'admin' || state.me.role === 'manager');
 
 /* ---------------- Корзина ---------------- */
@@ -161,6 +162,7 @@ const routes = [
   [/^\/delivery$/, viewDelivery],
   [/^\/(privacy|terms|cookies)$/, viewLegal],
   [/^\/admin(?:\/(\w+))?$/, viewAdmin],
+  [/^\/courier$/, viewCourier],
 ];
 let routedOnce = false;
 function clientTitle(p) {
@@ -178,7 +180,7 @@ async function router() {
   routedOnce = true;
   $('#nav').classList.remove('open');
   // В админке, корзине и кабинете рекламу не показываем (если скрипт Google уже загружен на другой странице)
-  document.body.classList.toggle('no-ads', /^\/(admin|cart|account|login|register)(\/|$)/.test(hash));
+  document.body.classList.toggle('no-ads', /^\/(admin|courier|cart|account|login|register)(\/|$)/.test(hash));
   $$('#nav a').forEach((a) => a.classList.toggle('active', hash === a.getAttribute('href')));
   for (const [re, fn] of routes) {
     const m = hash.match(re);
@@ -217,7 +219,11 @@ $('#langBtn').addEventListener('click', () => {
 });
 
 function updateHeader() {
-  $('#adminLink').classList.toggle('hidden', !isStaff());
+  const link = $('#adminLink');
+  link.classList.toggle('hidden', !isStaff() && !isCourier());
+  link.href = isCourier() ? '/courier' : '/admin';
+  link.textContent = isCourier() ? '🚚' : '⚙';
+  if (isCourier()) { link.title = 'Маршрут курьера'; link.setAttribute('aria-label', 'Маршрут курьера'); }
   $('#accountLink').title = state.me ? t('nav.accountOf', { name: state.me.name }) : t('nav.login');
 }
 
@@ -522,7 +528,7 @@ function viewAuth(mode) {
       const { user } = await api('POST', reg ? '/api/auth/register' : '/api/auth/login', fd);
       state.me = user; updateHeader();
       toast(t('auth.welcome', { name: user.name }));
-      navigate(user.role === 'customer' ? '/account' : '/admin');
+      navigate(user.role === 'customer' ? '/account' : user.role === 'courier' ? '/courier' : '/admin');
     } catch (err) { toast(err.message, true); }
   });
 }
@@ -543,6 +549,7 @@ async function viewAccount() {
       </div>
       <p class="muted">${esc(me.email)}</p>
       ${isStaff() ? `<p><a href="/admin" class="btn primary">${t('acc.admin')}</a></p>` : ''}
+      ${isCourier() ? '<p><a href="/courier" class="btn primary">🚚 Маршрут доставки</a></p>' : ''}
       <form class="form" id="profile">
         <label class="field">${t('f.name')}<input class="input" name="name" value="${esc(me.name)}" autocomplete="name"></label>
         <label class="field">${t('f.phone')}<input class="input" name="phone" value="${esc(me.phone || '')}" autocomplete="tel"></label>
@@ -579,7 +586,7 @@ async function logout() {
   toast(t('acc.loggedOut'));
 }
 // Роли в админке всегда по-русски
-const roleName = (r) => ({ admin: 'Администратор', manager: 'Менеджер', customer: 'Покупатель' }[r] || r);
+const roleName = (r) => ({ admin: 'Администратор', manager: 'Менеджер', courier: 'Курьер', customer: 'Покупатель' }[r] || r);
 // manage = true — карточка заказа в админке (по-русски), иначе — в кабинете покупателя (на языке сайта)
 function orderCard(o, manage = false) {
   const tt = (key, vars) => (manage ? I18N.ru[key].replace(/\{(\w+)\}/g, (_, k) => vars?.[k] ?? '') : t(key, vars));
@@ -596,6 +603,7 @@ function orderCard(o, manage = false) {
       : `<div class="total-line"><span class="muted">${tt('order.goods')}</span><span>${zl(o.total)}</span></div>`}
     ${o.delivery === 'courier' ? `<div class="total-line"><span class="muted">${tt('order.delivery')}</span><span>${o.delivery_fee == null ? tt('order.dUnknown') : zl(o.delivery_fee)}</span></div>` : ''}
     <div class="total-line"><span class="muted">${tt(o.total_final == null && o.status === 'new' ? 'order.sumEst' : 'order.sum')}</span><b class="price" style="font-size:20px">${zl(o.grand_total)}</b></div>
+    ${manage && o.paid_method ? `<div class="paid-note">✅ Оплачено ${o.paid_method === 'cash' ? 'наличными' : 'картой'} · ${fmtDate(o.paid_at)}${o.paid_by ? ` · ${esc(o.paid_by)}` : ''}</div>` : ''}
     ${manage && o.status !== 'cancelled' ? `<form class="form-row" data-final="${o.id}" style="margin-top:8px;align-items:end">
       <label class="field" style="margin:0">Товары по факт. весу, zł<input class="input" name="total" inputmode="decimal" placeholder="${o.total}" value="${o.total_final ?? ''}"></label>
       ${o.delivery === 'courier' ? `<label class="field" style="margin:0">Доставка, zł<input class="input" name="delivery_fee" inputmode="decimal" value="${o.delivery_fee ?? ''}"></label>` : ''}
@@ -1013,6 +1021,57 @@ async function showRoute(box) {
   } catch (e) { box.innerHTML = ''; toast(e.message, true); }
 }
 
+/* ---------- Курьер: маршрут доставки и отметка оплаты ---------- */
+async function viewCourier() {
+  if (!state.me) return navigate('/login');
+  if (!isCourier() && !can('orders.manage')) return navigate('/account');
+  app.innerHTML = '<section class="section courier"><div class="panel muted">Загружаем маршрут…</div></section>';
+  let r;
+  try { r = await api('GET', '/api/courier/route'); } catch (e) { app.innerHTML = `<section class="section"><div class="panel">${esc(e.message)}</div></section>`; return; }
+  const km = (v) => String(v).replace('.', ',');
+  const items = (s) => s.items.map((i) => `${esc(i.name)} × ${km(i.qty)} ${esc(i.piece_weight ? 'шт' : i.unit)}`).join(', ');
+  const card = (s) => `<li class="route-stop courier-stop ${s.paid_method ? 'paid' : ''}" data-id="${s.id}">
+      <span class="route-n">${s.n ?? '?'}</span>
+      <div class="route-main">
+        <b>${esc(s.maps)}</b>
+        <div class="muted">№${s.id} · ${esc(s.customer_name)} · ${esc(s.status_name)}${s.leg_km != null ? ` · +${km(s.leg_km)} км${s.leg_min != null ? `, ${s.leg_min} мин` : ''}` : ''}</div>
+        <div class="courier-items">${items(s)}</div>
+        ${s.comment ? `<div class="courier-comment">💬 ${esc(s.comment)}</div>` : ''}
+        <div class="courier-pay">
+          <span class="courier-sum">К оплате: <b>${zl(s.grand_total)}</b>${s.total_final == null ? ' <span class="muted">(предварительно)</span>' : ''}</span>
+          ${s.paid_method
+            ? `<span class="paid-note">✅ Оплачено ${s.paid_method === 'cash' ? 'наличными' : 'картой'} · ${fmtDate(s.paid_at)}</span><button class="btn sm ghost" data-pay="" type="button">Отменить</button>`
+            : '<button class="btn sm cart" data-pay="cash" type="button">💵 Наличными</button><button class="btn sm cart" data-pay="card" type="button">💳 Картой</button>'}
+        </div>
+        <div class="courier-actions">
+          <a class="btn sm" href="tel:${esc(s.phone.replace(/[^+\d]/g, ''))}">📞 ${esc(s.phone)}</a>
+          <a class="btn sm" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.maps)}&travelmode=driving">🧭 Навигация</a>
+        </div>
+      </div>
+    </li>`;
+  const c = r.collected;
+  app.innerHTML = `<section class="section courier">
+    <div class="toolbar"><h1 style="margin:0">🚚 Доставка</h1><button class="btn sm" id="cRefresh" type="button">↻ Обновить</button></div>
+    <div class="stats">
+      <div class="stat"><div class="v">${r.stops.length + r.unlocated.length}</div><div class="l">Адресов</div></div>
+      <div class="stat"><div class="v">${km(r.total_km)} км</div><div class="l">${r.mode === 'road' ? `по дорогам${r.total_min ? ` · ≈${r.total_min} мин` : ''}` : 'по прямой'}</div></div>
+      <div class="stat"><div class="v">${zl(c.cash)}</div><div class="l">Наличными сегодня</div></div>
+      <div class="stat"><div class="v">${zl(c.card)}</div><div class="l">Картой сегодня</div></div>
+    </div>
+    ${r.stops.length ? `<div class="route-links" style="margin:16px 0">${r.links.map((l) => `<a class="btn primary" target="_blank" rel="noopener" href="${esc(l.url)}">🗺 Весь маршрут в Google Maps${r.links.length > 1 ? ` (${l.from}–${l.to})` : ''}</a>`).join('')}</div>
+      <ol class="route-list">${r.stops.map(card).join('')}</ol>` : '<div class="panel empty" style="margin-top:16px">Сейчас нет заказов для доставки</div>'}
+    ${r.unlocated.length ? `<h3>Адрес не найден на карте — уточните у менеджера</h3><ol class="route-list">${r.unlocated.map(card).join('')}</ol>` : ''}
+  </section>`;
+  $('#cRefresh').addEventListener('click', viewCourier);
+  $$('[data-pay]', app).forEach((b) => b.addEventListener('click', async () => {
+    const id = b.closest('[data-id]').dataset.id;
+    const method = b.dataset.pay;
+    if (!method && !confirm('Снять отметку об оплате?')) return;
+    try { await api('PUT', `/api/orders/${id}/payment`, { method: method || null }); toast(method ? 'Оплата отмечена' : 'Отметка снята'); viewCourier(); }
+    catch (e) { toast(e.message, true); }
+  }));
+}
+
 /* ---------- Сотрудники и права ---------- */
 async function adminUsers(main) {
   const { users } = await api('GET', '/api/users');
@@ -1042,7 +1101,7 @@ function userDialog(u) {
       </div>
       <div class="form-row">
         <label class="field">Роль<select class="input" name="role" ${self ? 'disabled' : ''}>
-          ${['manager', 'admin', 'customer'].map((r) => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${roleName(r)}</option>`).join('')}</select></label>
+          ${['manager', 'courier', 'admin', 'customer'].map((r) => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${roleName(r)}</option>`).join('')}</select></label>
         <label class="field">${isNew ? 'Пароль' : 'Новый пароль (сброс)'}<input class="input" name="password" type="password" minlength="8" autocomplete="new-password" ${isNew ? 'required' : ''}></label>
       </div>
       <div id="permBox">

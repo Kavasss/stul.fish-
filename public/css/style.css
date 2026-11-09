@@ -528,6 +528,22 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
 /* Реклама Google не показывается в админке, корзине и кабинете */
 body.no-ads ins.adsbygoogle, body.no-ads .google-auto-placed { display: none !important; }
 
+/* Курьер */
+.courier .stats { margin-top: 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.courier .stat { padding: 12px 14px; }
+.courier .stat .v { font-size: 22px; }
+@media (max-width: 700px) { .courier .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .courier .stat .v { font-size: 20px; } }
+.courier-stop .route-n { align-self: flex-start; }
+.courier-sum { flex-basis: 100%; }
+.courier-stop { align-items: flex-start; }
+.courier-stop.paid { border-color: rgba(120, 200, 130, .45); background: rgba(80, 160, 90, .06); }
+.courier-items { margin-top: 6px; font-size: 14px; overflow-wrap: anywhere; }
+.courier-comment { margin-top: 4px; font-size: 14px; color: var(--gold-2); overflow-wrap: anywhere; }
+.courier-pay, .courier-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.courier-sum { margin-right: auto; font-size: 15px; }
+.courier-sum b { font-size: 18px; color: var(--gold-2); }
+.paid-note { color: #9be3a6; font-size: 14px; }
+
 /* Маршрут развоза */
 .route { margin-bottom: 20px; }
 .route-list { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 8px; }
