@@ -13,7 +13,7 @@ const SELLER = {
   email: 'ghgfh2678@gmail.com',
   phone: '+48 576 230 707',
   domain: 'shulfish.pl',
-  updated: '04.11.2026',
+  updated: '09.11.2026',
 };
 
 const legalIncomplete = () => Object.values(SELLER).some((v) => String(v).startsWith('['));
@@ -181,6 +181,11 @@ const LEGAL = {
         <li>бухгалтерии и, по законному требованию, государственным органам.</li>
       </ul>
       <p>Шрифты сайта загружаются с серверов Google Fonts. При этом Google получает IP-адрес вашего устройства.</p>
+      <p><b>Реклама.</b> На страницах магазина показывается реклама Google AdSense (Google Ireland Ltd., Gordon House, Barrow Street, Dublin 4, Ирландия).
+      Google получает IP-адрес, сведения о браузере и о просматриваемой странице и может использовать cookies. Персонализированная реклама и рекламные cookies —
+      только с вашего согласия (ст. 6 ч. 1 п. a RODO), которое вы даёте или отклоняете в окне Google и можете в любой момент изменить через «Настройки рекламы» внизу страницы.
+      Без согласия показывается неперсонализированная реклама. Google действует как самостоятельный администратор данных: <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener">как Google использует данные</a>.
+      Данные заказов (имя, телефон, адрес) в Google AdSense не передаются; в админке, корзине и личном кабинете реклама не показывается.</p>
 
       <h3>4. Сколько мы храним данные</h3>
       <ul>
@@ -230,6 +235,11 @@ const LEGAL = {
         <li>biuro rachunkowe oraz — na podstawie przepisów prawa — uprawnione organy państwowe.</li>
       </ul>
       <p>Czcionki strony są pobierane z serwerów Google Fonts, w związku z czym Google otrzymuje adres IP Twojego urządzenia.</p>
+      <p><b>Reklamy.</b> Na stronach Sklepu wyświetlane są reklamy Google AdSense (Google Ireland Ltd., Gordon House, Barrow Street, Dublin 4, Irlandia).
+      Google otrzymuje adres IP, informacje o przeglądarce i oglądanej stronie oraz może używać plików cookies. Reklamy spersonalizowane i reklamowe pliki cookies —
+      wyłącznie za Twoją zgodą (art. 6 ust. 1 lit. a RODO), którą wyrażasz lub odrzucasz w oknie Google i możesz w każdej chwili zmienić w „Ustawieniach reklam” na dole strony.
+      Bez zgody wyświetlane są reklamy niespersonalizowane. Google działa jako odrębny administrator danych: <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener">jak Google wykorzystuje dane</a>.
+      Dane zamówień (imię, telefon, adres) nie są przekazywane do Google AdSense; w panelu, koszyku i na koncie Klienta reklamy nie są wyświetlane.</p>
 
       <h3>4. Okres przechowywania danych</h3>
       <ul>
@@ -259,8 +269,11 @@ const LEGAL = {
   cookies: {
     title: { ru: 'Политика cookies', pl: 'Polityka cookies' },
     ru: () => `
-      <p>Сайт использует только то, без чего он не может работать. Мы <b>не используем</b> рекламные или аналитические cookies
-      и не отслеживаем вас на других сайтах. Поэтому согласие на такие cookies не требуется.</p>
+      <p>Сайт использует необходимые cookies и хранилище браузера (таблица ниже) — для них согласие не требуется.
+      Кроме того, на страницах магазина показывается реклама <b>Google AdSense</b>. Google может сохранять свои cookies (например, <code>__gads</code>, <code>__gpi</code>, <code>IDE</code>)
+      для показа и измерения рекламы. Рекламные cookies и персонализация — только с вашего согласия в окне Google; изменить или отозвать согласие можно через
+      «Настройки рекламы» внизу страницы. Подробнее — в <a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener">политике Google</a>.
+      Аналитические cookies мы не используем.</p>
       <div class="table-wrap"><table>
         <tr><th>Название</th><th>Тип</th><th>Зачем</th><th>Срок</th></tr>
         <tr><td><code>sid</code></td><td>cookie, необходимый</td><td>держит вас в аккаунте после входа</td><td>14 дней или до выхода</td></tr>
@@ -270,8 +283,11 @@ const LEGAL = {
       </table></div>
       <p>Cookies можно удалить или заблокировать в настройках браузера. Если заблокировать <code>sid</code>, войти в аккаунт будет невозможно.</p>`,
     pl: () => `
-      <p>Sklep korzysta wyłącznie z mechanizmów niezbędnych do jego działania. <b>Nie używamy</b> reklamowych ani analitycznych
-      plików cookies i nie śledzimy Cię na innych stronach, dlatego zgoda na takie pliki nie jest wymagana.</p>
+      <p>Sklep korzysta z niezbędnych plików cookies i pamięci przeglądarki (tabela poniżej) — nie wymagają one zgody.
+      Ponadto na stronach Sklepu wyświetlane są reklamy <b>Google AdSense</b>. Google może zapisywać własne pliki cookies (np. <code>__gads</code>, <code>__gpi</code>, <code>IDE</code>)
+      w celu wyświetlania i pomiaru reklam. Reklamowe pliki cookies i personalizacja — wyłącznie za Twoją zgodą w oknie Google; zgodę możesz zmienić lub wycofać
+      w „Ustawieniach reklam” na dole strony. Więcej — w <a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener">zasadach Google</a>.
+      Nie używamy analitycznych plików cookies.</p>
       <div class="table-wrap"><table>
         <tr><th>Nazwa</th><th>Rodzaj</th><th>Cel</th><th>Okres</th></tr>
         <tr><td><code>sid</code></td><td>plik cookie niezbędny</td><td>utrzymanie zalogowania na konto</td><td>14 dni lub do wylogowania</td></tr>

@@ -525,6 +525,9 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
 .hours-bar .hours-st { color: #e8a48a; }
 .hours-bar.open .hours-st { color: #9be3a6; }
 .hours-bar.hidden { display: none; }
+/* Реклама Google не показывается в админке, корзине и кабинете */
+body.no-ads ins.adsbygoogle, body.no-ads .google-auto-placed { display: none !important; }
+
 /* Маршрут развоза */
 .route { margin-bottom: 20px; }
 .route-list { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 8px; }

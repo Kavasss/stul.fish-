@@ -177,6 +177,8 @@ async function router() {
   if (routedOnce) document.title = clientTitle(hash);
   routedOnce = true;
   $('#nav').classList.remove('open');
+  // В админке, корзине и кабинете рекламу не показываем (если скрипт Google уже загружен на другой странице)
+  document.body.classList.toggle('no-ads', /^\/(admin|cart|account|login|register)(\/|$)/.test(hash));
   $$('#nav a').forEach((a) => a.classList.toggle('active', hash === a.getAttribute('href')));
   for (const [re, fn] of routes) {
     const m = hash.match(re);
@@ -1178,6 +1180,18 @@ async function adminSheets(main) {
   }
   updateHeader();
   renderHoursBar();
+  // «Настройки рекламы»: окно согласия Google, чтобы изменить или отозвать согласие
+  if (document.querySelector('script[src*="adsbygoogle"]')) {
+    $('#adPrefs').classList.remove('hidden');
+    $('#adPrefs').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.googlefc = window.googlefc || {};
+      window.googlefc.callbackQueue = window.googlefc.callbackQueue || [];
+      window.googlefc.callbackQueue.push({ CONSENT_DATA_READY: () => window.googlefc.showRevocationMessage() });
+      // окно согласия не настроено в AdSense — открываем политику cookies
+      setTimeout(() => { if (!document.querySelector('.fc-consent-root')) navigate('/cookies'); }, 1500);
+    });
+  }
   // Время идёт: раз в минуту обновляем полоску (и корзину, если приём только что открылся или закрылся)
   let wasOpen = ordersOpenNow();
   setInterval(() => { renderHoursBar(); const now = ordersOpenNow(); if (now !== wasOpen) { wasOpen = now; if (location.pathname === '/cart') router(); } }, 60e3);

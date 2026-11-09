@@ -60,7 +60,7 @@ const I18N = {
     'acc.delPw': 'Пароль для подтверждения', 'acc.delBtn': 'Удалить навсегда', 'acc.deleted': 'Аккаунт удалён',
     'order.n': 'Заказ №{id}', 'order.sum': 'Сумма', 'order.sumEst': 'Предварительная сумма', 'order.sumFinal': 'Сумма по весу', 'order.goods': 'Товары', 'order.goodsEst': 'Товары (предварительно)', 'order.goodsFinal': 'Товары по весу', 'order.delivery': 'Доставка', 'order.dUnknown': 'уточнит менеджер',
     'role.admin': 'Администратор', 'role.manager': 'Менеджер', 'role.customer': 'Покупатель',
-    'cookie.text': 'Мы используем только необходимые cookies: для входа в аккаунт и корзины. Без рекламы и слежки.', 'cookie.more': 'Подробнее', 'cookie.ok': 'Понятно',
+    'cookie.text': 'Мы используем необходимые cookies для входа в аккаунт и корзины. На сайте показывается реклама Google: рекламные cookies — только с вашего согласия, его можно изменить в «Настройках рекламы» внизу страницы.', 'cookie.more': 'Подробнее', 'cookie.ok': 'Понятно', 'legal.adPrefs': 'Настройки рекламы',
     'legal.effective': 'Действует с {date}', 'legal.other': 'Другие документы:', 'legal.incomplete': '⚠ Реквизиты продавца ещё не заполнены. Владелец сайта должен вписать их в <code>public/js/legal.js</code>.',
   },
   pl: {
@@ -112,7 +112,7 @@ const I18N = {
     'acc.delPw': 'Hasło w celu potwierdzenia', 'acc.delBtn': 'Usuń na zawsze', 'acc.deleted': 'Konto zostało usunięte',
     'order.n': 'Zamówienie nr {id}', 'order.sum': 'Kwota', 'order.sumEst': 'Kwota orientacyjna', 'order.sumFinal': 'Kwota wg wagi', 'order.goods': 'Produkty', 'order.goodsEst': 'Produkty (orientacyjnie)', 'order.goodsFinal': 'Produkty wg wagi', 'order.delivery': 'Dostawa', 'order.dUnknown': 'poda konsultant',
     'role.admin': 'Administrator', 'role.manager': 'Menedżer', 'role.customer': 'Klient',
-    'cookie.text': 'Używamy wyłącznie niezbędnych plików cookies: do logowania i obsługi koszyka. Bez reklam i śledzenia.', 'cookie.more': 'Więcej', 'cookie.ok': 'Rozumiem',
+    'cookie.text': 'Używamy niezbędnych plików cookies do logowania i obsługi koszyka. Na stronie wyświetlane są reklamy Google: reklamowe pliki cookies — tylko za Twoją zgodą, którą możesz zmienić w „Ustawieniach reklam” na dole strony.', 'cookie.more': 'Więcej', 'cookie.ok': 'Rozumiem', 'legal.adPrefs': 'Ustawienia reklam',
     'legal.effective': 'Obowiązuje od {date}', 'legal.other': 'Pozostałe dokumenty:', 'legal.incomplete': '⚠ Dane sprzedawcy nie zostały jeszcze uzupełnione. Właściciel strony musi wpisać je w pliku <code>public/js/legal.js</code>.',
   },
 };

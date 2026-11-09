@@ -77,3 +77,23 @@ test('название товара не может вставить HTML в с�
   const ld = /<script type="application\/ld\+json">(.*?)<\/script>/.exec(r.body)[1];
   assert.doesNotMatch(ld, /<\/script>/);
 });
+
+test('реклама Google: скрипт с nonce на страницах магазина, без рекламы в корзине и админке, ads.txt', async () => {
+  const r = await fetch(base + '/catalog');
+  const html = await r.text();
+  const csp = r.headers.get('content-security-policy');
+  const nonce = /'nonce-([^']+)'/.exec(csp)[1];
+  assert.match(html, new RegExp(`<script async nonce="${nonce.replace(/[+/=]/g, '\\$&')}" src="https://pagead2\\.googlesyndication\\.com/pagead/js/adsbygoogle\\.js\\?client=ca-pub-\\d+"`));
+  assert.equal(html.match(/<script nonce=/g).length, 3); // свои скрипты тоже с nonce
+  assert.match(html, /<meta name="google-adsense-account" content="ca-pub-\d+">/);
+  assert.match(csp, /frame-ancestors 'none'/);
+  // nonce каждый раз новый
+  assert.notEqual(/'nonce-([^']+)'/.exec((await fetch(base + '/')).headers.get('content-security-policy'))[1], nonce);
+  for (const p of ['/cart', '/admin', '/admin/orders', '/account']) {
+    const x = await fetch(base + p);
+    assert.doesNotMatch(await x.text(), /adsbygoogle/, p);
+    assert.match(x.headers.get('content-security-policy'), /script-src 'self'/, p);
+  }
+  const ads = await fetch(base + '/ads.txt');
+  assert.match(await ads.text(), /^google\.com, pub-\d+, DIRECT, f08c47fec0942fa0\n$/);
+});

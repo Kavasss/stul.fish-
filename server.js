@@ -1534,8 +1534,9 @@ function serveStatic(req, res, pathname, query) {
       if (base === UPLOAD_DIR) return send(res, 404, { error: 'Не найдено' });
       // Страница приложения: index.html с заголовком, описанием и canonical именно этой страницы
       const page = seo.renderPage(pathname === '/index.html' ? '/' : pathname, query);
+      const html = pageWithAds(page.html, pathname, res);
       res.writeHead(page.status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-      return res.end(req.method === 'HEAD' ? undefined : page.html);
+      return res.end(req.method === 'HEAD' ? undefined : html);
     }
     const ext = path.extname(target).toLowerCase();
     // Служебные файлы (README.md и т.п.) наружу не отдаём — только известные типы
@@ -1564,6 +1565,45 @@ const CSP = [
   "form-action 'self'",
   "frame-ancestors 'none'",
 ].join('; ');
+/*
+ * Реклама Google AdSense. ADSENSE_CLIENT=off — сайт без рекламы.
+ * Скрипт подключается только на страницах магазина (не в админке, корзине и кабинете).
+ * Согласие на рекламные cookies в ЕС собирает окно Google (AdSense → «Конфиденциальность и сообщения»).
+ * Для таких страниц — CSP с одноразовым nonce: выполняются только наши скрипты и то, что загрузил скрипт Google.
+ */
+const ADSENSE_DEFAULT = 'ca-pub-6163251646983594';
+const ADSENSE_CLIENT = (() => {
+  const v = process.env.ADSENSE_CLIENT ?? ADSENSE_DEFAULT;
+  if (v === 'off') return null;
+  if (!/^ca-pub-\d{10,20}$/.test(v)) { console.warn(`ADSENSE_CLIENT="${v}" не похож на ca-pub-…, реклама выключена`); return null; }
+  return v;
+})();
+const NO_ADS_PATHS = /^\/(admin|cart|account|login|register)(\/|$)/;
+const cspWithAds = (nonce) => [
+  "default-src 'self'",
+  // 'strict-dynamic': доверяем скриптам с нашим nonce и тем, что они загрузили; https:/'unsafe-inline' — запасной вариант для старых браузеров
+  `script-src 'nonce-${nonce}' 'strict-dynamic' https: 'unsafe-inline'`,
+  "style-src 'self' 'unsafe-inline' https:",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https:",
+  "frame-src https:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+function pageWithAds(html, pathname, res) {
+  if (!ADSENSE_CLIENT) return html;
+  const meta = `<meta name="google-adsense-account" content="${ADSENSE_CLIENT}">`;
+  if (NO_ADS_PATHS.test(pathname)) return html.replace('</head>', `  ${meta}\n</head>`);
+  const nonce = crypto.randomBytes(16).toString('base64');
+  res.setHeader('Content-Security-Policy', cspWithAds(nonce));
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups'); // клик по рекламе открывает новую вкладку
+  return html
+    .replace(/<script src=/g, `<script nonce="${nonce}" src=`)
+    .replace('</head>', `  ${meta}\n  <script async nonce="${nonce}" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}" crossorigin="anonymous"></script>\n</head>`);
+}
 function securityHeaders(req, res) {
   res.setHeader('Content-Security-Policy', CSP);
   res.setHeader('X-Frame-Options', 'DENY');
@@ -1591,6 +1631,8 @@ const server = http.createServer(async (req, res) => {
   if (!pathname.startsWith('/api/')) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Method not allowed' });
     if (pathname === '/sitemap.xml') return send(res, 200, seo.sitemap(), { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+    // ads.txt — подтверждение для рекламодателей, что реклама на сайте продаётся через этот аккаунт AdSense
+    if (pathname === '/ads.txt' && ADSENSE_CLIENT) return send(res, 200, `google.com, ${ADSENSE_CLIENT.replace('ca-', '')}, DIRECT, f08c47fec0942fa0\n`, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
     if (pathname === '/robots.txt') return send(res, 200, seo.robots(), { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
     try { return serveStatic(req, res, pathname, url.searchParams); } catch (e) { console.error(e); return send(res, 500, { error: 'Внутренняя ошибка сервера' }); }
   }
