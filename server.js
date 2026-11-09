@@ -1221,6 +1221,27 @@ route('POST', '/api/orders', async ({ user, body, req }) => {
  * Порядок — «ближайший следующий», затем улучшение перестановками (2-opt), расстояния по прямой.
  */
 const ROUTE_STATUSES = ['new', 'confirmed', 'assembling'];
+// Маршрутизатор по дорогам OSRM (карты OpenStreetMap). Передаются только координаты, без имён и телефонов.
+// ROUTER_URL=off — порядок по прямой.
+const ROUTER_URL = process.env.ROUTER_URL || 'https://router.project-osrm.org';
+// Возвращает порядок точек (индексы pts) и отрезки по дорогам { km, min }, или null — тогда считаем по прямой
+async function roadTrip(start, pts) {
+  if (ROUTER_URL === 'off' || !pts.length || pts.length > 99) return null;
+  const coords = [start, ...pts].map(([lat, lon]) => `${lon.toFixed(6)},${lat.toFixed(6)}`).join(';');
+  try {
+    const res = await fetch(`${ROUTER_URL}/trip/v1/driving/${coords}?source=first&roundtrip=false&destination=any&overview=false`,
+      { headers: { 'User-Agent': 'SHUL.FISH shop (shulfish.pl)' }, signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    const d = await res.json();
+    const trip = d.trips?.[0];
+    if (d.code !== 'Ok' || !trip || d.trips.length !== 1 || !Array.isArray(d.waypoints) || d.waypoints.length !== pts.length + 1) return null;
+    // waypoints[i].waypoint_index — место точки i в поездке (0 — старт)
+    const order = pts.map((_, i) => i).sort((a, b) => d.waypoints[a + 1].waypoint_index - d.waypoints[b + 1].waypoint_index);
+    if (d.waypoints[0].waypoint_index !== 0 || trip.legs?.length !== pts.length) return null;
+    const legs = trip.legs.map((l) => ({ km: Math.round(l.distance / 100) / 10, min: Math.max(1, Math.round(l.duration / 60)) }));
+    return { order, legs };
+  } catch { return null; }
+}
 function planRoute(start, pts) {
   const left = pts.slice(), path = [];
   let cur = start;
@@ -1274,21 +1295,25 @@ route('GET', '/api/orders/route', async ({ user }) => {
     }
     (o.lat == null ? unlocated : located).push({ o, pt: o.lat == null ? null : [o.lat, o.lon] });
   }
-  const path = planRoute(DELIVERY_CENTER, located);
-  let prev = DELIVERY_CENTER, total = 0;
-  const stop = (x, n, leg) => {
+  // Порядок по дорогам (OSRM); если маршрутизатор недоступен — по прямой
+  const road = await roadTrip(DELIVERY_CENTER, located.map((x) => x.pt));
+  const path = road ? road.order.map((i) => located[i]) : planRoute(DELIVERY_CENTER, located);
+  let prev = DELIVERY_CENTER, total = 0, totalMin = 0;
+  const stop = (x, n, leg, min) => {
     const o = getOrder(x.o.id);
     const [city, ...rest] = o.address.split(', ');
-    return { n, leg_km: leg, id: o.id, status: o.status, status_name: o.status_name, customer_name: o.customer_name, phone: o.phone, address: o.address, comment: o.comment,
+    return { n, leg_km: leg, leg_min: min, id: o.id, status: o.status, status_name: o.status_name, customer_name: o.customer_name, phone: o.phone, address: o.address, comment: o.comment,
       grand_total: o.grand_total, lat: x.o.lat, lon: x.o.lon, maps: `${rest.join(', ')}, ${city}` };
   };
   const stops = path.map((x, i) => {
-    const leg = Math.round(distanceKm(prev, x.pt) * 10) / 10;
-    prev = x.pt; total += leg;
-    return stop(x, i + 1, leg);
+    const leg = road ? road.legs[i].km : Math.round(distanceKm(prev, x.pt) * 10) / 10;
+    const min = road ? road.legs[i].min : null;
+    prev = x.pt; total += leg; totalMin += min || 0;
+    return stop(x, i + 1, leg, min);
   });
-  return { start: { name: 'Bazar Trocka', lat: DELIVERY_CENTER[0], lon: DELIVERY_CENTER[1] }, stops, total_km: Math.round(total * 10) / 10,
-    unlocated: unlocated.map((x) => stop(x, null, null)), links: mapsLinks(DELIVERY_CENTER, stops) };
+  return { start: { name: 'Bazar Trocka', lat: DELIVERY_CENTER[0], lon: DELIVERY_CENTER[1] }, mode: road ? 'road' : 'straight', stops,
+    total_km: Math.round(total * 10) / 10, total_min: road ? Math.round(totalMin) : null,
+    unlocated: unlocated.map((x) => stop(x, null, null, null)), links: mapsLinks(DELIVERY_CENTER, stops) };
 });
 function getOrder(id) {
   const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(id));
@@ -1664,4 +1689,4 @@ if (require.main === module) {
     if (sheets.configured) { sheets.start(); console.log('Связь с Google Таблицей включена'); }
   });
 }
-module.exports = { server, db, sheets, ordersOpenAt, parseOrderHours, planRoute, mapsLinks };
+module.exports = { server, db, sheets, ordersOpenAt, parseOrderHours, planRoute, mapsLinks, roadTrip };

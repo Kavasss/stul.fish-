@@ -998,12 +998,12 @@ async function showRoute(box) {
           <b>${esc(s.maps)}</b>
           <div class="muted">№${s.id} · ${esc(s.customer_name)} · <a href="tel:${esc(s.phone.replace(/[^+\d]/g, ''))}">${esc(s.phone)}</a> · ${esc(s.status_name)}${s.comment ? ` · «${esc(s.comment)}»` : ''}</div>
         </div>
-        <div class="route-side">${s.leg_km != null ? `<span class="muted">+${String(s.leg_km).replace('.', ',')} км</span>` : ''}<b>${zl(s.grand_total)}</b>
+        <div class="route-side">${s.leg_km != null ? `<span class="muted">+${String(s.leg_km).replace('.', ',')} км${s.leg_min != null ? ` · ${s.leg_min} мин` : ''}</span>` : ''}<b>${zl(s.grand_total)}</b>
           <a class="muted" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.maps)}">на карте</a></div>
       </li>`;
     box.innerHTML = `<div class="panel route">
-      <h3 style="margin-top:0">🗺 Маршрут развоза <span class="muted" style="font-size:14px">· ${r.stops.length} адр. · ≈${String(r.total_km).replace('.', ',')} км по прямой</span></h3>
-      <p class="muted" style="margin-top:-6px">Все курьерские заказы «Новый», «Подтверждён», «Собирается». Старт — ${esc(r.start.name)}, дальше — ближайший следующий адрес.</p>
+      <h3 style="margin-top:0">🗺 Маршрут развоза <span class="muted" style="font-size:14px">· ${r.stops.length} адр. · ≈${String(r.total_km).replace('.', ',')} км ${r.mode === 'road' ? `по дорогам · ≈${r.total_min} мин в пути` : 'по прямой'}</span></h3>
+      <p class="muted" style="margin-top:-6px">Все курьерские заказы «Новый», «Подтверждён», «Собирается». Старт — ${esc(r.start.name)}. ${r.mode === 'road' ? 'Порядок подобран по дорогам — самый короткий объезд всех адресов (время — без учёта пробок).' : '⚠ Сервис маршрутов сейчас недоступен — порядок примерный, по прямой. Попробуйте открыть маршрут ещё раз позже.'}</p>
       ${r.stops.length ? `<ol class="route-list">${r.stops.map(row).join('')}</ol>
       <div class="route-links">${r.links.map((l) => `<a class="btn primary" target="_blank" rel="noopener" href="${esc(l.url)}">Открыть в Google Maps${r.links.length > 1 ? ` (точки ${l.from}–${l.to})` : ''}</a>`).join('')}</div>
       ${r.links.length > 1 ? '<p class="muted" style="font-size:13px">Google Maps принимает до 10 точек в одной ссылке, поэтому маршрут разбит на части — откройте их по очереди.</p>' : ''}`

@@ -176,6 +176,7 @@ const LEGAL = {
         <li>курьерам и службам доставки — в объёме, нужном для доставки;</li>
         <li>хостинг-провайдеру, на серверах которого работает сайт;</li>
         <li>OpenStreetMap Foundation (сервис Nominatim): при оформлении доставки ему передаётся только адрес (без имени и телефона), чтобы проверить расстояние до зоны доставки;</li>
+        <li>FOSSGIS e.V. (сервис маршрутов OSRM, Германия): для построения маршрута курьера передаются только координаты адресов доставки (без имени, телефона и адреса текстом);</li>
         <li>Google Ireland Ltd. (Google Workspace / Google Таблицы): там ведётся учёт заказов и склада.
           Google может обрабатывать данные за пределами ЕЭЗ на основании стандартных договорных условий ЕС;</li>
         <li>бухгалтерии и, по законному требованию, государственным органам.</li>
@@ -230,6 +231,7 @@ const LEGAL = {
         <li>kurierzy i firmy dostawcze — w zakresie niezbędnym do doręczenia;</li>
         <li>dostawca hostingu, na którego serwerach działa Sklep;</li>
         <li>OpenStreetMap Foundation (usługa Nominatim): przy zamówieniu z dostawą przekazywany jest wyłącznie adres (bez imienia i telefonu), aby sprawdzić odległość od strefy dostawy;</li>
+        <li>FOSSGIS e.V. (usługa tras OSRM, Niemcy): do wyznaczenia trasy kuriera przekazywane są wyłącznie współrzędne adresów dostawy (bez imienia, telefonu i adresu w postaci tekstu);</li>
         <li>Google Ireland Ltd. (Google Workspace / Arkusze Google), w których prowadzona jest ewidencja zamówień i magazynu.
           Google może przetwarzać dane poza EOG na podstawie standardowych klauzul umownych zatwierdzonych przez Komisję Europejską;</li>
         <li>biuro rachunkowe oraz — na podstawie przepisów prawa — uprawnione organy państwowe.</li>

@@ -24,10 +24,23 @@ const geo = http.createServer((req, res) => {
   res.end(JSON.stringify(k ? [{ lat: String(POS[k][0]), lon: String(POS[k][1]) }] : []));
 }).listen(0);
 process.env.GEOCODER_URL = `http://127.0.0.1:${geo.address().port}/search`;
+// Поддельный OSRM: «по дорогам» выгоднее ехать сначала к дальней точке (по долготе — с конца); router.on = false — недоступен
+const router = { on: true, calls: 0 };
+const osrm = http.createServer((req, res) => {
+  router.calls++;
+  if (!router.on) { res.statusCode = 503; return res.end('{}'); }
+  const pts = decodeURIComponent(new URL(req.url, 'http://x').pathname.split('/').pop()).split(';').map((p) => p.split(',').map(Number));
+  const rest = pts.slice(1).map((p, i) => ({ i: i + 1, lon: p[0] })).sort((a, b) => b.lon - a.lon);
+  const wi = new Array(pts.length); wi[0] = 0; rest.forEach((x, k) => { wi[x.i] = k + 1; });
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ code: 'Ok', waypoints: pts.map((_, i) => ({ waypoint_index: wi[i], trips_index: 0 })),
+    trips: [{ legs: rest.map(() => ({ distance: 2345, duration: 300 })), distance: 2345 * rest.length, duration: 300 * rest.length }] }));
+}).listen(0);
+process.env.ROUTER_URL = `http://127.0.0.1:${osrm.address().port}`;
 const { server, db, ordersOpenAt, parseOrderHours, planRoute, mapsLinks } = require('../server.js');
 let base;
 before(() => new Promise((r) => server.listen(0, () => { base = `http://127.0.0.1:${server.address().port}`; r(); })));
-after(() => new Promise((r) => { geo.close(); server.close(r); }));
+after(() => new Promise((r) => { geo.close(); osrm.close(); server.close(r); }));
 
 function client() {
   let cookie = '';
@@ -84,7 +97,19 @@ test('маршрут развоза: активные курьерские за�
   db.prepare('UPDATE orders SET lat = NULL, lon = NULL WHERE id = ?').run(c.id);
 
   assert.equal((await client()('GET', '/api/orders/route')).status, 401);
+  // по дорогам: порядок от маршрутизатора, километры и минуты по дорогам
+  const road = (await manager('GET', '/api/orders/route')).data;
+  assert.equal(road.mode, 'road');
+  assert.deepEqual(road.stops.map((s) => s.id), [d.id, c.id, b.id, a.id]);
+  assert.deepEqual(road.stops.map((s) => [s.leg_km, s.leg_min]), [[2.3, 5], [2.3, 5], [2.3, 5], [2.3, 5]]);
+  assert.equal(road.total_km, 9.2);
+  assert.equal(road.total_min, 20);
+  // маршрутизатор недоступен — порядок по прямой
+  router.on = false;
   const r = (await manager('GET', '/api/orders/route')).data;
+  router.on = true;
+  assert.equal(r.mode, 'straight');
+  assert.equal(r.total_min, null);
   assert.deepEqual(r.stops.map((s) => s.id), [a.id, b.id, c.id, d.id]);
   assert.deepEqual(r.stops.map((s) => s.n), [1, 2, 3, 4]);
   assert.deepEqual(r.unlocated.map((s) => s.id), [x.id]);
